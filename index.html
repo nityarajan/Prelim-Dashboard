@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PrelimsIQ — Teacher Dashboard</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="httabtps://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -634,6 +634,7 @@ function getPredictedFail(student) {
 
 function tabAtRisk(data){
   const uniq = uniqueLatest(data);
+  const prelims = [...new Set(data.map(s => s.prelim))]; // Get count
 
   // Pre-compute all four lists with full enrichment
   const allFailing = uniq.filter(s => s.passOverall==='FAIL').sort((a,b) => b.noFail-a.noFail);
@@ -650,23 +651,17 @@ function tabAtRisk(data){
   // Cache for the filter function
   window._arCache = { allFailing, allHighAbs, allPredFail, allFailInt };
 
-  return `
-  <div class="stat-grid">
-    <div class="stat-card red"><div class="stat-num">${allFailInt.length}</div><div class="stat-label">🚨 Fail Even With Internals</div></div>
-    <div class="stat-card red"><div class="stat-num">${allFailing.length}</div><div class="stat-label">Currently Failing</div></div>
-    <div class="stat-card amber"><div class="stat-num">${allPredFail.length}</div><div class="stat-label">Predicted to Fail</div></div>
-    <div class="stat-card amber"><div class="stat-num">${allHighAbs.length}</div><div class="stat-label">High Absenteeism (&gt;3)</div></div>
-  </div>
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-    <span style="font-size:.79rem;color:var(--muted);font-weight:600">Filter by subject:</span>
-    <div class="sp" id="ar-pills">
-      ${['OVERALL','ENGLISH','HINDI','MARATHI','MATH','SCIENCE','SST'].map((s,i)=>
-        `<div class="sp-pill ${i===0?'active':''}" data-subj="${s}" onclick="arFilter(this)">${s}</div>`
-      ).join('')}
+return `
+    <div class="stat-grid">
+      <div class="stat-card red"><div class="stat-num">${allFailInt.length}</div><div class="stat-label">🚨 Fail Even With Internals</div></div>
+      <div class="stat-card red"><div class="stat-num">${allFailing.length}</div><div class="stat-label">Currently Failing</div></div>
+      <div class="stat-card amber">
+        <div class="stat-num">${prelims.length < 2 ? 'N/A' : allPredFail.length}</div>
+        <div class="stat-label">Predicted to Fail</div>
+      </div>
+      <div class="stat-card amber"><div class="stat-num">${allHighAbs.length}</div><div class="stat-label">High Absenteeism (&gt;3)</div></div>
     </div>
-  </div>
-  <div id="ar-body"></div>`;
-}
+    `;
 
 function arFilter(el) {
   document.querySelectorAll('#ar-pills .sp-pill').forEach(p => p.classList.remove('active'));
@@ -676,6 +671,7 @@ function arFilter(el) {
 
 function arRender(subj) {
   const {allFailing, allHighAbs, allPredFail, allFailInt} = window._arCache || {};
+  const prelimCount = [...new Set(G.all.map(s => s.prelim))].length;
   if (!allFailing) return;
 
   const isSub = subj !== 'OVERALL';
@@ -683,11 +679,8 @@ function arRender(subj) {
   // Filter each list by the selected subject
   const failing  = isSub ? allFailing.filter(r  => r.failing.includes(subj))    : allFailing;
   const predFail = isSub ? allPredFail.filter(r => r.predFails.includes(subj))  : allPredFail;
-  const failInt  = isSub ? allFailInt.filter(r  => r.badSubjs.includes(subj))   : allFailInt;
-  // For absenteeism: filter to students absent in that subject specifically
-  const highAbs  = isSub
-    ? allHighAbs.filter(r => r[subj] === null)
-    : allHighAbs;
+  const failInt  = isSub ? allFailInt.filter(r  => r.badSubjs.includes(subj))    : allFailInt;
+  const highAbs  = isSub ? allHighAbs.filter(r => r[subj] === null) : allHighAbs;
 
   const lbl = isSub ? ` — ${subj}` : '';
   const mkT = (rows, cols) => !rows.length
@@ -728,9 +721,11 @@ function arRender(subj) {
     <p style="font-size:.79rem;color:var(--muted);margin-bottom:12px">
       Students predicted to fail 2+ subjects (avg score + avg growth trend).
     </p>
-    ${predFail.length === 0
-      ? '<div class="empty"><div class="empty-icon">✅</div><p>No students predicted to fail.</p></div>'
-      : mkT(predFail.slice(0,50).map(r => `<tr>
+    ${prelimCount < 2 
+      ? '<div class="empty"><p><strong>N/A:</strong> Upload at least 2 prelims to enable failure predictions.</p></div>'
+      : (predFail.length === 0
+        ? '<div class="empty"><div class="empty-icon">✅</div><p>No students predicted to fail.</p></div>'
+        : mkT(predFail.slice(0,50).map(r => `<tr>
           <td style="font-weight:600;white-space:nowrap">${r.name}</td>
           <td>${r.section}</td><td>${r.prelim}</td>
           <td style="color:${scoreClr(r.pct)}">${fmtPct(r.pct)}</td>
@@ -739,6 +734,7 @@ function arRender(subj) {
           <td style="font-family:'DM Mono',monospace;font-size:.78rem;color:var(--red);font-weight:600">${r.predOverall??'—'}</td>
           <td>${bktBadge(r.bucket)}</td>
         </tr>`).join(''), ['Name','Sec','P','Current%','Now','Predicted Fail Subjects','Pred Overall','Bucket'])
+      )
     }
   </div>
 
@@ -753,7 +749,6 @@ function arRender(subj) {
     </tr>`).join(''), ['Name','Sec','P','Absences','Pass/Fail','Score%'])}
   </div>`;
 }
-
 
 // ── GROWTH TAB ─────────────────────────────────────────
 function tabGrowth(data){
