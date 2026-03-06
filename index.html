@@ -227,7 +227,12 @@ const PASS = { ENGLISH:28, HINDI:28, MARATHI:28, MATH:28, SCIENCE:28, SST:28 }; 
 const MAX  = { ENGLISH:80, HINDI:80, MARATHI:80, MATH:80, SCIENCE:80, SST:80 }; // all out of 80
 const TOTAL_MAX = 480;
 
-let G = { all:[], fileName:'' };
+let G = {
+  all:[],
+  fileName:'',
+  detectedColumns:null,
+  schema:null
+};
 let activeTab = 'overview';
 
 // ── TEMPLATE DOWNLOAD ──────────────────────────────────
@@ -246,6 +251,146 @@ function dlTemplate() {
   XLSX.writeFile(wb, 'prelim_marks_template.xlsx');
 }
 
+function detectColumns(rows){
+  const headers = Object.keys(rows[0]).map(h => h.toUpperCase())
+
+  const detect = patterns =>
+    headers.find(h => patterns.some(p => h.includes(p)))
+
+  return {
+    prelim: detect(['PRELIM']),
+    roll: detect(['ROLL']),
+    name: detect(['NAME']),
+    section: detect(['SECTION','DIV','CLASS']),
+    gender: detect(['GENDER','SEX']),
+
+    english: detect(['ENG']),
+    hindi: detect(['HIN']),
+    marathi: detect(['MAR']),
+    math1: detect(['MATH 1','MATH1','MATHS 1']),
+    math2: detect(['MATH 2','MATH2','MATHS 2']),
+    science1: detect(['SCIENCE 1','SCI1']),
+    science2: detect(['SCIENCE 2','SCI2']),
+    history: detect(['HISTORY','HIST']),
+    geography: detect(['GEOGRAPHY','GEO'])
+  }
+}
+  function showSchemaBuilder(raw){
+
+  const headers = Object.keys(raw[0])
+
+  const makeDropdown = (id, detected) => `
+  <select id="${id}" style="margin:6px 0;padding:6px">
+    <option value="">None</option>
+    ${headers.map(h =>
+      `<option ${h===detected?'selected':''}>${h}</option>`
+    ).join('')}
+  </select>
+  `
+
+  document.getElementById("loading-screen").style.display="none"
+
+  const html = `
+  <div style="padding:40px;max-width:600px;margin:auto">
+
+  <h2 style="margin-bottom:20px">Confirm Column Mapping</h2>
+
+  <p style="color:#666;margin-bottom:20px">
+  Check the columns detected by the system.
+  </p>
+
+  <div>
+  <label>Student Name</label><br>
+  ${makeDropdown("map_name",G.detectedColumns.name)}
+  </div>
+
+  <div>
+  <label>Roll Number</label><br>
+  ${makeDropdown("map_roll",G.detectedColumns.roll)}
+  </div>
+
+  <div>
+  <label>English</label><br>
+  ${makeDropdown("map_english",G.detectedColumns.english)}
+  </div>
+
+  <div>
+  <label>Hindi</label><br>
+  ${makeDropdown("map_hindi",G.detectedColumns.hindi)}
+  </div>
+
+  <div>
+  <label>Math Paper 1</label><br>
+  ${makeDropdown("map_math1",G.detectedColumns.math1)}
+  </div>
+
+  <div>
+  <label>Math Paper 2</label><br>
+  ${makeDropdown("map_math2",G.detectedColumns.math2)}
+  </div>
+
+  <div>
+  <label>Science Paper 1</label><br>
+  ${makeDropdown("map_sci1",G.detectedColumns.science1)}
+  </div>
+
+  <div>
+  <label>Science Paper 2</label><br>
+  ${makeDropdown("map_sci2",G.detectedColumns.science2)}
+  </div>
+
+  <div>
+  <label>History</label><br>
+  ${makeDropdown("map_hist",G.detectedColumns.history)}
+  </div>
+
+  <div>
+  <label>Geography</label><br>
+  ${makeDropdown("map_geo",G.detectedColumns.geography)}
+  </div>
+
+  <br>
+
+  <button onclick="saveSchema(raw)" style="padding:10px 20px">
+  Continue
+  </button>
+
+  </div>
+  `
+
+  document.body.innerHTML = html
+}
+  function saveSchema(raw){
+
+  G.schema = {
+    subjects:[
+      {name:"ENGLISH",cols:[document.getElementById("map_english").value],max:80},
+      {name:"HINDI",cols:[document.getElementById("map_hindi").value],max:80},
+      {name:"MATH",cols:[
+        document.getElementById("map_math1").value,
+        document.getElementById("map_math2").value
+      ].filter(Boolean),max:80},
+      {name:"SCIENCE",cols:[
+        document.getElementById("map_sci1").value,
+        document.getElementById("map_sci2").value
+      ].filter(Boolean),max:80},
+      {name:"SST",cols:[
+        document.getElementById("map_hist").value,
+        document.getElementById("map_geo").value
+      ].filter(Boolean),max:80}
+    ]
+  }
+
+  document.body.innerHTML = document.getElementById("dashboard").outerHTML
+
+  G.all = processRowsDynamic(raw)
+
+  computeBuckets(G.all)
+
+  initFilters()
+
+  renderTab("overview")
+}
 // ── FILE LOAD ──────────────────────────────────────────
 document.getElementById('file-input').addEventListener('change', e => { if(e.target.files[0]) loadFile(e.target.files[0]); });
 const dz = document.getElementById('drop-zone');
@@ -266,7 +411,9 @@ function loadFile(file) {
       const raw = XLSX.utils.sheet_to_json(wb.Sheets[sn], {defval:null});
       setMsg('Calculating scores…');
       setTimeout(()=>{
-        G.all = processRows(raw);
+      G.detectedColumns = detectColumns(raw)
+      showSchemaBuilder(raw)
+      return
         if (!G.all.length){ alert('No student data found. Check your file format.'); resetApp(); return; }
         computeBuckets(G.all);
         setMsg('Building dashboard…');
@@ -306,6 +453,47 @@ function col(row, ...names) {
 
 function num(v){ if(v===null||v===undefined||String(v).trim().toUpperCase()==='AB'||String(v).trim()==='') return null; const n=parseFloat(v); return isNaN(n)?null:n; }
 
+function computeSubject(row, subject){
+
+  const vals = subject.cols.map(c => num(row[c]))
+
+  if(vals.every(v=>v===null)) return null
+
+  if(vals.some(v=>v===null)) return null
+
+  return vals.reduce((a,b)=>a+b,0)
+}  
+
+function processRowsDynamic(rows){
+
+  return rows.map(row=>{
+
+    const subjects = {}
+
+    G.schema.subjects.forEach(s=>{
+      subjects[s.name] = computeSubject(row,s)
+    })
+
+    const scores = Object.values(subjects).filter(v=>v!==null)
+
+    const total = scores.reduce((a,b)=>a+b,0)
+
+    const totalMax = G.schema.subjects.reduce((a,b)=>a+b.max,0)
+
+    const pct = total/totalMax
+
+    return {
+      name: row[document.getElementById("map_name").value],
+      rollNo: row[document.getElementById("map_roll").value],
+      prelim: 1,
+      section:"—",
+      ...subjects,
+      overall: total,
+      pct
+    }
+
+  })
+}
 function processRows(rows){
   return rows.map(row=>{
     const prelim  = num(col(row,'PRELIM','PRELIM NO','PRELIM NO.','PRELIM NUMBER')) ?? 1;
