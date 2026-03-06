@@ -309,7 +309,7 @@ function num(v){ if(v===null||v===undefined||String(v).trim().toUpperCase()==='A
 function processRows(rows){
   return rows.map(row=>{
     const prelim  = num(col(row,'PRELIM','PRELIM NO','PRELIM NO.','PRELIM NUMBER')) ?? 1;
-    const rollNo  = col(row,'ROLL NO.','ROLL NO','ROLLNO','ROLL','ROLL NUMBER');
+    const rollNo  = col(row,'ROLL NO.','ROLL NO','ROLLNO','ROLL','ROLL NUMBER','ROLL.NO');
     const name    = String(col(row,'NAME','STUDENT NAME','STUDENT')||'').trim();
     const section = String(col(row,'SECTION','CLASS','DIV','DIVISION')||'—').trim();
     const gender  = String(col(row,'GENDER','SEX')||'').trim().toUpperCase()||'—';
