@@ -294,12 +294,12 @@ function resetApp(){
 }
 
 // ── RAW DATA PROCESSING ────────────────────────────────
-function col(row, ...keys){
-  // Strip surrounding quotes, spaces, and normalise — handles headers like 'HINDI' or "MARATHI"
-  const clean = k => k.trim().replace(/^['"]|['"]$/g,'').toUpperCase();
-  for(const k of keys){
-    const found = Object.keys(row).find(r=>clean(r)===clean(k));
-    if(found!==undefined) return row[found];
+function col(row, ...names) {
+  // Normalize row keys to lowercase for matching
+  const rowKeys = Object.keys(row).map(k => k.trim().toLowerCase());
+  for (const name of names) {
+    const key = Object.keys(row).find(k => k.trim().toLowerCase() === name.toLowerCase());
+    if (key !== undefined) return row[key];
   }
   return null;
 }
