@@ -671,7 +671,8 @@ function arFilter(el) {
 
 function arRender(subj) {
   const {allFailing, allHighAbs, allPredFail, allFailInt} = window._arCache || {};
-  const prelimCount = [...new Set(G.all.map(s => s.prelim))].length;
+  const prelims = [...new Set(G.all.map(s => s.prelim))]; // Get unique prelims
+  const prelimCount = prelims.length; 
   if (!allFailing) return;
 
   const isSub = subj !== 'OVERALL';
@@ -722,18 +723,18 @@ function arRender(subj) {
       Students predicted to fail 2+ subjects (avg score + avg growth trend).
     </p>
     ${prelimCount < 2 
-      ? '<div class="empty"><p><strong>N/A:</strong> Upload at least 2 prelims to enable failure predictions.</p></div>'
+      ? '<div class="empty"><div class="empty-icon">📈</div><p>Upload at least 2 prelims to unlock failure predictions.</p></div>'
       : (predFail.length === 0
         ? '<div class="empty"><div class="empty-icon">✅</div><p>No students predicted to fail.</p></div>'
         : mkT(predFail.slice(0,50).map(r => `<tr>
-          <td style="font-weight:600;white-space:nowrap">${r.name}</td>
-          <td>${r.section}</td><td>${r.prelim}</td>
-          <td style="color:${scoreClr(r.pct)}">${fmtPct(r.pct)}</td>
-          <td>${pfBadge(r.passOverall)}</td>
-          <td style="font-size:.78rem;color:var(--red)">${r.predFails.join(', ')}</td>
-          <td style="font-family:'DM Mono',monospace;font-size:.78rem;color:var(--red);font-weight:600">${r.predOverall??'—'}</td>
-          <td>${bktBadge(r.bucket)}</td>
-        </tr>`).join(''), ['Name','Sec','P','Current%','Now','Predicted Fail Subjects','Pred Overall','Bucket'])
+            <td style="font-weight:600;white-space:nowrap">${r.name}</td>
+            <td>${r.section}</td><td>${r.prelim}</td>
+            <td style="color:${scoreClr(r.pct)}">${fmtPct(r.pct)}</td>
+            <td>${pfBadge(r.passOverall)}</td>
+            <td style="font-size:.78rem;color:var(--red)">${r.predFails.join(', ')}</td>
+            <td style="font-family:'DM Mono',monospace;font-size:.78rem;color:var(--red);font-weight:600">${r.predOverall??'—'}</td>
+            <td>${bktBadge(r.bucket)}</td>
+          </tr>`).join(''), ['Name','Sec','P','Current%','Now','Predicted Fail Subjects','Pred Overall','Bucket'])
       )
     }
   </div>
