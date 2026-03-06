@@ -358,7 +358,14 @@ function detectColumns(rows){
   </div>
   `
 
-  document.body.innerHTML = html
+document.getElementById("upload-screen").style.display = "none"
+document.getElementById("dashboard").style.display = "none"
+
+const container = document.createElement("div")
+container.id = "schema-screen"
+container.innerHTML = html
+
+document.body.appendChild(container)
 }
   function saveSchema(raw){
 
@@ -381,7 +388,8 @@ function detectColumns(rows){
     ]
   }
 
-  document.body.innerHTML = document.getElementById("dashboard").outerHTML
+  document.getElementById("schema-screen").remove()
+  document.getElementById("dashboard").style.display = "block"
 
   G.all = processRowsDynamic(raw)
 
@@ -399,35 +407,55 @@ dz.addEventListener('dragleave', ()=>dz.classList.remove('drag-over'));
 dz.addEventListener('drop', e=>{ e.preventDefault(); dz.classList.remove('drag-over'); if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
 
 function loadFile(file) {
-  G.fileName = file.name;
-  document.getElementById('fbadge').textContent = file.name;
-  document.getElementById('upload-screen').style.display = 'none';
-  document.getElementById('loading-screen').style.display = 'flex';
-  const reader = new FileReader();
-  reader.onload = ev => {
-    try {
-      const wb = XLSX.read(ev.target.result, {type:'array'});
-      const sn = wb.SheetNames.find(n=>/raw|data|marks/i.test(n)) || wb.SheetNames[0];
-      const raw = XLSX.utils.sheet_to_json(wb.Sheets[sn], {defval:null});
-      setMsg('Calculating scores…');
-      setTimeout(()=>{
-      G.detectedColumns = detectColumns(raw)
-      showSchemaBuilder(raw)
-      return
-        if (!G.all.length){ alert('No student data found. Check your file format.'); resetApp(); return; }
-        computeBuckets(G.all);
-        setMsg('Building dashboard…');
-        setTimeout(()=>{
-          document.getElementById('loading-screen').style.display = 'none';
-          document.getElementById('dashboard').style.display = 'block';
-          initFilters();
-          renderTab('overview');
-        },300);
-      },200);
-    } catch(err){ console.error(err); alert('Could not read file. Please check the format.'); resetApp(); }
-  };
-  reader.readAsArrayBuffer(file);
+
+G.fileName = file.name;
+document.getElementById('fbadge').textContent = file.name;
+
+document.getElementById('upload-screen').style.display = 'none';
+document.getElementById('loading-screen').style.display = 'flex';
+
+const reader = new FileReader();
+
+reader.onload = ev => {
+try {
+
+```
+  const wb = XLSX.read(ev.target.result, {type:'array'});
+  const sn = wb.SheetNames.find(n=>/raw|data|marks/i.test(n)) || wb.SheetNames[0];
+
+  const raw = XLSX.utils.sheet_to_json(wb.Sheets[sn], {defval:null});
+
+  if(!raw.length){
+    alert('No student data found. Check your file format.');
+    resetApp();
+    return;
+  }
+
+  setMsg('Detecting columns…');
+
+  // NEW STEP: detect schema
+  G.detectedColumns = detectColumns(raw);
+
+  // Hide loading spinner
+  document.getElementById('loading-screen').style.display = 'none';
+
+  // Show mapping UI
+  showSchemaBuilder(raw);
+
+} catch(err) {
+
+  console.error(err);
+  alert('Could not read file. Please check the format.');
+  resetApp();
+
 }
+```
+
+};
+
+reader.readAsArrayBuffer(file);
+}
+
 
 function setMsg(m){ document.getElementById('load-msg').textContent=m; }
 
