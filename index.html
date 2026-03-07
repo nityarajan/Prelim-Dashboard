@@ -333,67 +333,96 @@ function autoDetectMapping() {
     return '';
   };
   W.mapping = {
-    prelim:  find('PRELIM','UNIT','TERM','TEST','EXAM','SEM'),
-    rollNo:  find('ROLL','SR.?\\s*NO','SER'),
-    name:    find('NAME','STUDENT'),
-    section: find('SECTION','CLASS','DIV','BATCH','SEC'),
-    gender:  find('GENDER','SEX','BOY'),
+    prelim:    find('PRELIM','UNIT','TERM','TEST','EXAM','SEM'),
+    rollNo:    find('ROLL','SR.?\\s*NO','SER'),
+    name:      find('NAME','STUDENT'),
+    section:   find('SECTION','CLASS','DIV','BATCH','SEC'),
+    gender:    find('GENDER','SEX','BOY'),
     examLabel: 'Prelim',
   };
-  // Detect leftover columns as potential subject columns
   const usedCols = Object.values(W.mapping).filter(Boolean);
   W.availSubjCols = hdrs.filter(h => !usedCols.includes(h));
-  // Auto-suggest subject groupings
   autoSuggestSubjects();
 }
 
 function autoSuggestSubjects() {
   const hdrs = W.availSubjCols;
-  const CNAME = h => CLEAN(h);
   const used = new Set();
   const subjs = [];
 
-  // Group: Math
-  const mathCols = hdrs.filter(h => /MATH|MATHS|GANIT|गणित/.test(CNAME(h)));
+  // Auto-exclude computed/total columns (percentage, total, result columns)
+  const EXCLUDE = /TOTAL.?PCT|TOTAL.?PERCENT|PERCENTAGE|RESULT|GRADE|RANK/;
+  hdrs.filter(h => EXCLUDE.test(CLEAN(h))).forEach(h => used.add(h));
+
+  const mathCols = hdrs.filter(h => /MATH|MATHS|GANIT|गणित/.test(CLEAN(h)) && !used.has(h));
   if(mathCols.length) { subjs.push(makeSubj('MATH','Math',mathCols,mathCols.length>1?40:80)); mathCols.forEach(c=>used.add(c)); }
 
-  // Group: Science
-  const sciCols = hdrs.filter(h => /SCIENCE|SCI|VIGYAN|विज्ञान/.test(CNAME(h)));
-  if(sciCols.length) { subjs.push(makeSubj('SCIENCE','Science',sciCols,sciCols.length>1?40:80)); sciCols.forEach(c=>used.add(c)); }
-
-  // Group: SST / History+Geo
-  const histCols = hdrs.filter(h => /HIST|HISTORY|ITIHAS|इतिहास/.test(CNAME(h)));
-  const geoCols  = hdrs.filter(h => /GEO|GEOGRAPHY|BHUGOL|भूगोल/.test(CNAME(h)));
+  // History/Geo BEFORE Science — prevents 'Pol Sci' being grabbed by Science pattern
+  const histCols = hdrs.filter(h => /HIST|HISTORY|ITIHAS|इतिहास/.test(CLEAN(h)) && !used.has(h));
+  const geoCols  = hdrs.filter(h => /GEO|GEOGRAPHY|BHUGOL|भूगोल/.test(CLEAN(h)) && !used.has(h));
   if(histCols.length && geoCols.length) {
     subjs.push(makeSubj('SST','Social Science',[...histCols,...geoCols],40));
     [...histCols,...geoCols].forEach(c=>used.add(c));
   } else if(histCols.length) { subjs.push(makeSubj('HISTORY','History',histCols,80)); histCols.forEach(c=>used.add(c)); }
     else if(geoCols.length)  { subjs.push(makeSubj('GEOGRAPHY','Geography',geoCols,80)); geoCols.forEach(c=>used.add(c)); }
 
-  // Single language subjects
+  // Science — only cols not already claimed by History
+  const sciCols = hdrs.filter(h => /SCIENCE|VIGYAN|विज्ञान/.test(CLEAN(h)) && !used.has(h));
+  // Also catch standalone SCI prefix (e.g. 'Sci 1') but NOT suffix (e.g. 'Pol Sci')
+  const sciExtra = hdrs.filter(h => /^SCI[\s\d]|^SCI$/.test(CLEAN(h)) && !used.has(h));
+  const allSci = [...new Set([...sciCols,...sciExtra])];
+  if(allSci.length) { subjs.push(makeSubj('SCIENCE','Science',allSci,allSci.length>1?40:80)); allSci.forEach(c=>used.add(c)); }
+
   const langPatterns = [
-    ['ENGLISH','English',/ENGLISH|ENG/],
-    ['HINDI','Hindi',/HINDI|HIN/],
-    ['MARATHI','Marathi',/MARATHI|MAR/],
+    ['ENGLISH','English',/^ENG|ENGLISH/],
+    ['HINDI','Hindi',/HINDI|^HIN/],
+    ['MARATHI','Marathi',/MARATHI|^MAR/],
     ['URDU','Urdu',/URDU/],
   ];
   for(const [id,label,pat] of langPatterns) {
-    const cols = hdrs.filter(h=>pat.test(CNAME(h)) && !used.has(h));
+    const cols = hdrs.filter(h=>pat.test(CLEAN(h)) && !used.has(h));
     if(cols.length) { subjs.push(makeSubj(id,label,cols,cols.length>1?40:80)); cols.forEach(c=>used.add(c)); }
   }
 
-  // Anything left = unknown subjects (each as single)
+  // Anything left (not excluded, not matched) = standalone subject
   hdrs.filter(h=>!used.has(h)).forEach(h => {
     const id = CLEAN(h).replace(/[^A-Z0-9]/g,'_');
     subjs.push(makeSubj(id, h, [h], 80));
   });
 
   W.subjects = subjs;
+
+  // Auto-detect per-exam-type max marks by observing max values in data
+  autoDetectExamMaxes();
 }
 
 function makeSubj(id, label, cols, maxPerCol) {
   const totalMax = maxPerCol * cols.length;
   return { id, label, cols, maxPerCol, totalMax, passThresh: Math.ceil(totalMax * 0.35) };
+}
+
+// Auto-detect max marks per exam type per subject column from observed data
+function autoDetectExamMaxes() {
+  const STANDARD_MAXES = [10, 20, 25, 30, 40, 50, 60, 80, 100];
+  const snapToStandard = v => STANDARD_MAXES.find(m => m >= v) || (Math.ceil(v/10)*10);
+
+  const examVals = [...new Set(G.rawRows.map(r => String(rawGet(r, W.mapping.prelim)||'').trim()))].filter(Boolean);
+  const allSubjCols = W.subjects.flatMap(s => s.cols);
+
+  W.examMaxes = {}; // { examVal: { colName: maxMarks } }
+
+  examVals.forEach(ev => {
+    const rows = G.rawRows.filter(r => String(rawGet(r, W.mapping.prelim)||'').trim() === ev);
+    W.examMaxes[ev] = {};
+    allSubjCols.forEach(col => {
+      const vals = rows.map(r => num(rawGet(r, col))).filter(v => v !== null);
+      if(!vals.length) { W.examMaxes[ev][col] = null; return; }
+      const observed = Math.max(...vals);
+      W.examMaxes[ev][col] = snapToStandard(observed);
+    });
+  });
+
+  W.examVals = examVals;
 }
 
 // ── WIZARD STEP RENDERER ─────────────────────────────────
@@ -416,11 +445,11 @@ function buildStep1() {
   const selVal = (val) => opts.replace(`value="${val}"`, `value="${val}" selected`);
 
   const fields = [
-    { key:'prelim',   label:'Exam / Prelim No.', required:true,  hint:'Column that identifies which exam (e.g. PRELIM, UNIT, TERM)' },
-    { key:'rollNo',   label:'Roll Number',        required:true,  hint:'Student roll / serial number' },
-    { key:'name',     label:'Student Name',       required:true,  hint:'Full name column' },
-    { key:'section',  label:'Section / Class',    required:false, hint:'Class section or division (optional)' },
-    { key:'gender',   label:'Gender / Boy-Girl',  required:false, hint:'Gender column (optional)' },
+    { key:'prelim',  label:'Exam / Prelim No.', required:true,  hint:'Column that identifies which exam (e.g. Prelim, Semester, Unit)' },
+    { key:'rollNo',  label:'Roll Number',        required:true,  hint:'Student roll / serial number' },
+    { key:'name',    label:'Student Name',       required:true,  hint:'Full name column' },
+    { key:'section', label:'Section / Class',    required:false, hint:'Class section or division (optional)' },
+    { key:'gender',  label:'Gender / Boy-Girl',  required:false, hint:'Gender column (optional)' },
   ];
 
   const mapRows = fields.map(f => {
@@ -433,7 +462,7 @@ function buildStep1() {
     </div>`;
   }).join('');
 
-  const examOpts = ['Prelim','Unit','Term','Test','Exam'].map(l=>`<option value="${l}"${l===W.mapping.examLabel?' selected':''}>${l}</option>`).join('');
+  const examOpts = ['Prelim','Unit','Term','Test','Exam','Semester'].map(l=>`<option value="${l}"${l===W.mapping.examLabel?' selected':''}>${l}</option>`).join('');
 
   return `<h3>Step 1 — Confirm Column Mapping</h3>
   <p>We auto-detected these columns from your file. Please verify before continuing.</p>
@@ -445,7 +474,7 @@ function buildStep1() {
       <select id="map_examLabel" onchange="W.mapping.examLabel=this.value">${examOpts}</select>
     </div>
   </div>
-  <div class="wiz-section" style="margin-top:16px">All columns detected in your file</div>
+  <div class="wiz-section" style="margin-top:16px">All columns in your file</div>
   <div style="margin-bottom:4px">${G.rawHeaders.map(h=>`<span class="col-chip">${h}</span>`).join('')}</div>
   <div class="wiz-nav">
     <button class="wiz-btn-s" onclick="cancelWizard()">← Back to Upload</button>
@@ -454,60 +483,114 @@ function buildStep1() {
 }
 
 function saveStep1() {
-  // Sync selects to W.mapping
   ['prelim','rollNo','name','section','gender','examLabel'].forEach(k=>{
     const el = document.getElementById('map_'+k);
     if(el) W.mapping[k] = el.value;
   });
   if(!W.mapping.prelim||!W.mapping.rollNo||!W.mapping.name){
-    alert('Please map the required columns: Exam Number, Roll Number, and Student Name.');
+    alert('Please map: Exam Number, Roll Number, and Student Name.');
     return;
   }
-  // Recompute available subject columns after step 1
   const usedCols = [W.mapping.prelim,W.mapping.rollNo,W.mapping.name,W.mapping.section,W.mapping.gender].filter(Boolean);
   W.availSubjCols = G.rawHeaders.filter(h=>!usedCols.includes(h));
   autoSuggestSubjects();
   renderWizardStep(2);
 }
 
-// ── STEP 2: Subject Structure ─────────────────────────────
+// ── STEP 2: Subjects + Per-Exam Max Marks ─────────────────
 function buildStep2() {
   const allCols = W.availSubjCols;
-  const colOpts = allCols.map(h=>`<option value="${h}">${h}</option>`).join('');
-
   const rows = W.subjects.map((s,i) => buildSubjRow(s,i,allCols)).join('');
 
+  // Detect mixed exam types
+  const isMixed = W.examVals && W.examVals.length > 1;
+  const mixedSection = isMixed ? buildExamMaxTable() : '';
+
   return `<h3>Step 2 — Define Subjects &amp; Max Marks</h3>
-  <p>Each subject row shows which columns map to it and the maximum marks per component. 
-     Split subjects (e.g. Math-1 + Math-2) are combined before pass/fail check. 
-     Drag a column to a different subject to reassign.</p>
+  <p>Check which columns map to each subject and the max marks per component.</p>
   <div class="wiz-section">Subjects</div>
   <div class="subj-header">
-    <span>Subject Name</span><span>Source Columns</span><span>Max/Component</span><span>Pass Threshold</span><span></span>
+    <span>Subject Name</span><span>Source Columns</span><span>Max/Col*</span><span>Pass Thresh</span><span></span>
   </div>
   <div id="subj-builder">${rows}</div>
   <button class="add-subj" onclick="addSubject()">＋ Add Subject</button>
+  ${mixedSection}
   <div class="wiz-nav">
     <button class="wiz-btn-s" onclick="renderWizardStep(1)">← Back</button>
     <button class="wiz-btn-p" onclick="saveStep2()">Next →</button>
   </div>`;
 }
 
+function buildExamMaxTable() {
+  const examVals = W.examVals;
+  // Build a grid: rows = exam types, cols = subjects
+  // Each cell = editable max marks for that exam×subject, auto-filled from observed data
+  const subjCols = W.subjects.flatMap(s => s.cols.map(c => ({subjId:s.id, subjLabel:s.label, col:c})));
+
+  const headerCells = subjCols.map(sc =>
+    `<th style="font-size:.7rem;padding:5px 8px;background:var(--surface2);white-space:nowrap">${sc.col}</th>`
+  ).join('');
+
+  const dataRows = examVals.map(ev => {
+    const cells = subjCols.map(sc => {
+      const detected = W.examMaxes[ev]?.[sc.col];
+      const safeEv = ev.replace(/[^a-z0-9]/gi,'_');
+      const safeCol = sc.col.replace(/[^a-z0-9]/gi,'_');
+      return `<td style="padding:4px">
+        <input type="number" id="exmax_${safeEv}_${safeCol}"
+          value="${detected||20}" min="1" max="200"
+          style="width:54px;padding:3px 5px;border:1px solid var(--border);border-radius:5px;
+                 font-family:'Plus Jakarta Sans',sans-serif;font-size:.79rem;background:var(--surface);
+                 color:var(--text);outline:none;text-align:center"
+          onchange="updateExamMax('${ev}','${sc.col}',+this.value)">
+      </td>`;
+    }).join('');
+    return `<tr>
+      <td style="padding:6px 10px;font-weight:600;font-size:.82rem;white-space:nowrap;
+                 background:var(--surface2);border-right:1px solid var(--border)">${ev}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  return `
+  <div class="wiz-section" style="margin-top:20px">📊 Max Marks Per Exam Type</div>
+  <p style="font-size:.82rem;color:var(--muted);margin-bottom:10px">
+    Different exam types have different max marks. We auto-detected these from your data — please verify.
+    Pass threshold is always <strong>35%</strong> of each cell's max, computed per student per exam.
+  </p>
+  <div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px">
+    <table style="width:100%;border-collapse:collapse;font-size:.81rem">
+      <thead><tr>
+        <th style="font-size:.7rem;padding:7px 10px;background:var(--surface2);text-align:left">Exam</th>
+        ${headerCells}
+      </tr></thead>
+      <tbody>${dataRows}</tbody>
+    </table>
+  </div>
+  <div style="font-size:.74rem;color:var(--muted);margin-top:6px">
+    * "Max/Col" above applies only when all exams have the same max. 
+    When exam types differ, this table takes precedence.
+  </div>`;
+}
+
+function updateExamMax(examVal, col, value) {
+  if(!W.examMaxes[examVal]) W.examMaxes[examVal] = {};
+  W.examMaxes[examVal][col] = value;
+}
+
 function buildSubjRow(s, i, allCols) {
   allCols = allCols || W.availSubjCols;
-  // Multi-select for columns
   const colCheckboxes = allCols.map(h =>
     `<label style="display:inline-flex;align-items:center;gap:3px;font-size:.75rem;margin:2px 3px;cursor:pointer">
       <input type="checkbox" value="${h}" ${s.cols.includes(h)?'checked':''} onchange="updateSubjCols(${i})">
       <span class="col-chip" style="cursor:pointer">${h}</span>
     </label>`).join('');
-
   return `<div class="subj-row" id="subj_${i}">
     <input type="text" value="${s.label}" placeholder="Subject name" onchange="W.subjects[${i}].label=this.value;W.subjects[${i}].id=this.value.toUpperCase().replace(/\\s+/g,'_')">
     <div style="max-height:80px;overflow-y:auto">${colCheckboxes}</div>
-    <input type="number" value="${s.maxPerCol}" min="1" max="200" style="width:75px" 
+    <input type="number" value="${s.maxPerCol}" min="1" max="200" style="width:70px"
       onchange="W.subjects[${i}].maxPerCol=+this.value;recalcSubjMax(${i})">
-    <input type="number" value="${s.passThresh}" min="1" max="200" style="width:75px"
+    <input type="number" value="${s.passThresh}" min="1" max="200" style="width:70px"
       onchange="W.subjects[${i}].passThresh=+this.value">
     <button class="del-btn" onclick="deleteSubject(${i})">✕</button>
   </div>`;
@@ -524,7 +607,6 @@ function recalcSubjMax(i) {
   const s = W.subjects[i];
   s.totalMax = s.maxPerCol * Math.max(1, s.cols.length);
   s.passThresh = Math.ceil(s.totalMax * 0.35);
-  // Update the passThresh input
   const row = document.getElementById('subj_'+i);
   if(row) { const inp = row.querySelectorAll('input[type=number]'); if(inp[1]) inp[1].value = s.passThresh; }
 }
@@ -540,7 +622,18 @@ function deleteSubject(i) {
 }
 
 function saveStep2() {
-  // Sync all subject data from DOM
+  // Sync exam max table from DOM
+  if(W.examMaxes) {
+    W.examVals.forEach(ev => {
+      const safeEv = ev.replace(/[^a-z0-9]/gi,'_');
+      W.subjects.flatMap(s=>s.cols).forEach(col => {
+        const safeCol = col.replace(/[^a-z0-9]/gi,'_');
+        const el = document.getElementById(`exmax_${safeEv}_${safeCol}`);
+        if(el) { if(!W.examMaxes[ev]) W.examMaxes[ev]={}; W.examMaxes[ev][col] = +el.value||20; }
+      });
+    });
+  }
+  // Sync subject rows from DOM
   W.subjects.forEach((s,i)=>{
     const row = document.getElementById('subj_'+i);
     if(!row) return;
@@ -558,31 +651,57 @@ function saveStep2() {
 
 // ── STEP 3: Review & Launch ───────────────────────────────
 function buildStep3() {
-  const totalMax = W.subjects.reduce((a,s)=>a+s.totalMax,0);
+  const isMixed = W.examVals && W.examVals.length > 1;
+  const sampleMax = W.subjects.reduce((a,s)=>a+s.totalMax,0);
   const subjItems = W.subjects.map(s=>`
     <div class="confirm-item">
       <div class="ci-label">${s.label}</div>
       <div class="ci-value">${s.cols.length>1?s.cols.join(' + '):s.cols[0]||'—'}</div>
-      <div class="ci-sub">Max: ${s.totalMax} | Pass: ≥${s.passThresh} (${Math.round(s.passThresh/s.totalMax*100)}%)</div>
+      <div class="ci-sub">${isMixed?'Max varies by exam (see table below)':'Max: '+s.totalMax} | Pass: 35%</div>
     </div>`).join('');
 
-  const sampleCount = G.rawRows.length;
+  const examSummary = isMixed ? `
+    <div class="wiz-section">Max Marks by Exam Type</div>
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:9px;margin-bottom:12px">
+      <table style="width:100%;border-collapse:collapse;font-size:.8rem">
+        <thead><tr>
+          <th style="padding:7px 12px;background:var(--surface2);text-align:left;font-size:.7rem">Exam</th>
+          ${W.subjects.map(s=>`<th style="padding:7px 8px;background:var(--surface2);font-size:.7rem">${s.label}</th>`).join('')}
+          <th style="padding:7px 8px;background:var(--surface2);font-size:.7rem">Total Max</th>
+        </tr></thead>
+        <tbody>${W.examVals.map(ev=>{
+          const subjTotals = W.subjects.map(s=>{
+            const colMax = s.cols.reduce((a,c)=>a+(W.examMaxes[ev]?.[c]||s.maxPerCol),0);
+            return colMax;
+          });
+          const total = subjTotals.reduce((a,b)=>a+b,0);
+          return `<tr>
+            <td style="padding:6px 12px;font-weight:600">${ev}</td>
+            ${subjTotals.map(m=>`<td style="padding:6px 8px;text-align:center">${m}</td>`).join('')}
+            <td style="padding:6px 8px;text-align:center;font-weight:600">${total}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>` : '';
+
   const prelims = [...new Set(G.rawRows.map(r => {
     const v = rawGet(r, W.mapping.prelim); return v;
   }).filter(Boolean))];
 
   return `<h3>Step 3 — Review &amp; Launch</h3>
-  <p>Everything looks good. Here's a summary of your setup. Click Launch to run the dashboard.</p>
-  <div class="wiz-section">File Info</div>
+  <p>Check your setup, then launch the dashboard.</p>
+  <div class="wiz-section">File</div>
   <div class="confirm-grid">
     <div class="confirm-item"><div class="ci-label">File</div><div class="ci-value">${G.fileName}</div></div>
-    <div class="confirm-item"><div class="ci-label">Rows detected</div><div class="ci-value">${sampleCount} student records</div></div>
-    <div class="confirm-item"><div class="ci-label">${W.mapping.examLabel} column</div><div class="ci-value">${W.mapping.prelim}</div><div class="ci-sub">${prelims.length} exams: ${prelims.sort().join(', ')}</div></div>
+    <div class="confirm-item"><div class="ci-label">Rows</div><div class="ci-value">${G.rawRows.length} student records</div></div>
+    <div class="confirm-item"><div class="ci-label">Exam column</div><div class="ci-value">${W.mapping.prelim}</div>
+      <div class="ci-sub">${prelims.length} exams: ${[...new Set(prelims)].sort().join(', ')}</div></div>
     <div class="confirm-item"><div class="ci-label">Name / Roll</div><div class="ci-value">${W.mapping.name} / ${W.mapping.rollNo}</div></div>
   </div>
-  <div class="wiz-section">Subjects (${W.subjects.length} total, max ${totalMax} marks)</div>
+  <div class="wiz-section">Subjects</div>
   <div class="confirm-grid">${subjItems}</div>
-  <div class="pass-note">✓ Pass rule: Best of 5 — student passes if they fail at most 1 subject. Each subject pass threshold set above.</div>
+  ${examSummary}
+  <div class="pass-note">✓ Pass rule: Best of 5 — fail at most 1 subject. Pass threshold = 35% of each subject's max for that exam.</div>
   <div class="wiz-nav">
     <button class="wiz-btn-s" onclick="renderWizardStep(2)">← Back</button>
     <button class="wiz-btn-p" onclick="launchDashboard()">🚀 Launch Dashboard</button>
@@ -606,7 +725,7 @@ function rawGet(row, colName) {
 function num(v){ if(v===null||v===undefined||String(v).trim().toUpperCase()==='AB'||String(v).trim()==='') return null; const n=parseFloat(v); return isNaN(n)?null:n; }
 
 // ═══════════════════════════════════════════════════════════
-// LAUNCH: build schema & process rows
+// LAUNCH
 // ═══════════════════════════════════════════════════════════
 function launchDashboard() {
   G.schema = {
@@ -617,6 +736,8 @@ function launchDashboard() {
     gender:    W.mapping.gender||null,
     examLabel: W.mapping.examLabel||'Prelim',
     subjects:  W.subjects.map(s=>({...s})),
+    examMaxes: W.examMaxes||{},   // { examVal: { colName: maxMarks } }
+    examVals:  W.examVals||[],
   };
 
   document.getElementById('wizard-screen').style.display='none';
@@ -625,7 +746,7 @@ function launchDashboard() {
   setTimeout(()=>{
     try {
       G.all = processRows(G.rawRows, G.schema);
-      if(!G.all.length){ alert('No valid student data found. Check your column mapping.'); resetApp(); return; }
+      if(!G.all.length){ alert('No valid student data found. Check column mapping.'); resetApp(); return; }
       computeBuckets(G.all);
       setMsg('Building dashboard…');
       setTimeout(()=>{
@@ -634,18 +755,26 @@ function launchDashboard() {
         initFilters();
         renderTab('overview');
       },300);
-    } catch(err){ console.error(err); alert('Error processing data: '+err.message); resetApp(); }
+    } catch(err){ console.error(err); alert('Error: '+err.message); resetApp(); }
   },200);
 }
 
 // ═══════════════════════════════════════════════════════════
-// DATA PROCESSING — schema-driven, fully flexible
+// PROCESS ROWS — schema-driven, per-exam per-subject max marks
 // ═══════════════════════════════════════════════════════════
 function processRows(rows, schema) {
-  const TOTAL_MAX = schema.subjects.reduce((a,s)=>a+s.totalMax,0);
+  const isMixed = schema.examVals && schema.examVals.length > 1;
+
+  // Get max marks for a specific column in a specific exam
+  // Falls back to the subject's configured maxPerCol if no per-exam data
+  const getColMax = (examVal, col, subj) => {
+    if(isMixed && schema.examMaxes[examVal]?.[col] != null)
+      return schema.examMaxes[examVal][col];
+    return subj.maxPerCol;
+  };
 
   return rows.map(row => {
-    const prelim  = num(rawGet(row, schema.prelim)) ?? 1;
+    const prelim  = String(rawGet(row, schema.prelim)||'').trim() || '1';
     const rollNo  = rawGet(row, schema.rollNo);
     const name    = String(rawGet(row, schema.name)||'').trim();
     const section = schema.section ? String(rawGet(row,schema.section)||'—').trim() : '—';
@@ -654,46 +783,55 @@ function processRows(rows, schema) {
                     rawGender.startsWith('M')||rawGender.startsWith('B') ? 'M' : '—';
     if(!name && rollNo===null) return null;
 
+    // For ordering/growth: try to convert to number, else keep as string
+    const prelimNum = num(prelim) ?? prelim;
+
     // Process each subject
     const subjectResults = {};
     let absCnt = 0;
+    let totalMaxForRow = 0;
 
     schema.subjects.forEach(subj => {
       const rawVals = subj.cols.map(c => num(rawGet(row, c)));
       const presentVals = rawVals.filter(v=>v!==null);
-      const absent = presentVals.length === 0; // fully absent = no component present
-      const partial = presentVals.length > 0 && presentVals.length < rawVals.length; // partial = some components missing
+      const absent = presentVals.length === 0;
+      const partial = presentVals.length > 0 && presentVals.length < rawVals.length;
 
       const score = absent ? null : presentVals.reduce((a,b)=>a+b,0);
-      // For partial: score is sum of present components; treated as present but likely fail
+
+      // Per-exam per-subject max = sum of per-column maxes for present columns
+      // If partial, we still use full subject max for fairness
+      const colMaxes = subj.cols.map(c => getColMax(prelim, c, subj));
+      const subjMax  = colMaxes.reduce((a,b)=>a+b,0);
+      const passThresh = Math.ceil(subjMax * 0.35);
 
       let pass;
       if(absent) { pass = null; absCnt++; }
-      else pass = score >= subj.passThresh;
+      else pass = score >= passThresh;
 
-      subjectResults[subj.id] = { score, pass, partial, rawVals, presentVals };
+      const pctSubj = subjMax > 0 && score !== null ? score / subjMax : null;
+
+      subjectResults[subj.id] = { score, pass, partial, rawVals, presentVals, subjMax, passThresh, pctSubj };
+      if(!absent) totalMaxForRow += subjMax;
     });
 
-    // failing array, noFail count
-    const failing = schema.subjects.filter(s=>subjectResults[s.id].pass===false).map(s=>s.id);
-    const noFail  = failing.length;
+    const failing   = schema.subjects.filter(s=>subjectResults[s.id].pass===false).map(s=>s.id);
+    const noFail    = failing.length;
     const failCount = noFail + absCnt;
     const passOverall = failCount <= 1 ? 'PASS' : 'FAIL';
 
-    // Overall score (sum of non-null subject scores)
-    const scores = schema.subjects.map(s=>subjectResults[s.id].score).filter(v=>v!==null);
-    const overall = scores.reduce((a,b)=>a+b,0);
+    // Overall: sum of scores / sum of maxes for present subjects → percentage
+    const presentScores = schema.subjects.map(s=>subjectResults[s.id]).filter(sr=>sr.score!==null);
+    const overall = presentScores.reduce((a,sr)=>a+sr.score,0);
+    const TOTAL_MAX = totalMaxForRow || schema.subjects.reduce((a,s)=>a+s.totalMax,0);
     const pct = TOTAL_MAX > 0 ? overall / TOTAL_MAX : 0;
 
-    // sp map (backward compat with tab functions)
     const sp = {};
     schema.subjects.forEach(s=>{ sp[s.id] = subjectResults[s.id].pass; });
-
-    // Build flat score props for tab functions (student[subj.id] = score)
     const flatScores = {};
     schema.subjects.forEach(s=>{ flatScores[s.id] = subjectResults[s.id].score; });
 
-    return { prelim, rollNo, name, section, gender,
+    return { prelim: prelimNum, rollNo, name, section, gender,
       ...flatScores, subjectResults,
       overall, pct, passOverall, sp, failing, noFail, absCnt, bucket:null,
       TOTAL_MAX };
@@ -811,16 +949,45 @@ function tabOverview(data){
 // ═══════════════════════════════════════════════════════════
 function tabStudents(data){
   const subjs=getSubjs();
-  const sorted=[...data].sort((a,b)=>b.overall-a.overall);
-  const subjCols=subjs.map(s=>`<th>${s.label}</th>`).join('');
-  const rows=sorted.map(r=>{
+  // Store data for filter function
+  window._stuData = data;
+  const subjOpts=subjs.map(s=>`<option value="${s.id}">${s.label}</option>`).join('');
+  const buckets=['LOR','LOWER MOR','UPPER MOR','HOR','ABS'];
+  const bktOpts=buckets.map(b=>`<option value="${b}">${b}</option>`).join('');
+  return `<div class="panel"><div class="panel-title">All Students</div>
+    <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="text" id="stu-search" placeholder="Search by name…" oninput="filtST()"
+        style="padding:6px 12px;border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.82rem;background:var(--surface);color:var(--text);outline:none;width:200px">
+      <select id="stu-subj" onchange="filtST()" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.82rem;background:var(--surface);color:var(--text);outline:none">
+        <option value="all">All Subjects</option>${subjOpts}
+      </select>
+      <select id="stu-bkt" onchange="filtST()" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.82rem;background:var(--surface);color:var(--text);outline:none">
+        <option value="all">All Buckets</option>${bktOpts}
+      </select>
+      <select id="stu-pass" onchange="filtST()" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.82rem;background:var(--surface);color:var(--text);outline:none">
+        <option value="all">Pass &amp; Fail</option>
+        <option value="PASS">Pass only</option>
+        <option value="FAIL">Fail only</option>
+      </select>
+      <span id="stu-count" style="font-size:.78rem;color:var(--muted);margin-left:4px"></span>
+    </div>
+    <div class="tw"><table><thead><tr>
+      <th>Name</th><th>Sec</th><th>P</th><th>Total</th><th>%</th>
+      ${subjs.map(s=>`<th>${s.label}</th>`).join('')}<th>Pass</th><th>Bucket</th>
+    </tr></thead><tbody id="stu-tbody">${buildStudentRows(data, subjs)}</tbody></table></div></div>`;
+}
+
+function buildStudentRows(data, subjs) {
+  subjs = subjs || getSubjs();
+  return [...data].sort((a,b)=>b.overall-a.overall).map(r=>{
     const subjTds=subjs.map(s=>{
       const sr=r.subjectResults?.[s.id];
       if(!sr||sr.score===null) return '<td style="color:var(--muted)">AB</td>';
-      const pct=s.totalMax?sr.score/s.totalMax:0;
-      return `<td style="color:${scoreClr(pct)}">${sr.score}<span style="font-size:.7rem;color:var(--muted)">/${s.totalMax}</span></td>`;
+      const pct=sr.scaledMax?sr.score/sr.scaledMax:(s.totalMax?sr.score/s.totalMax:0);
+      const maxDisp=sr.scaledMax||s.totalMax;
+      return `<td style="color:${scoreClr(pct)}">${sr.score}<span style="font-size:.7rem;color:var(--muted)">/${maxDisp}</span></td>`;
     }).join('');
-    return `<tr>
+    return `<tr data-name="${r.name.toLowerCase()}" data-bucket="${r.bucket||''}" data-pass="${r.passOverall}" data-failing="${r.failing.join(',')}">
       <td style="font-weight:600;white-space:nowrap">${r.name}</td>
       <td>${r.section}</td><td>${r.prelim}</td>
       <td style="color:${scoreClr(r.pct)};font-weight:600">${r.overall}<span style="font-size:.7rem;color:var(--muted)">/${r.TOTAL_MAX}</span></td>
@@ -829,21 +996,26 @@ function tabStudents(data){
       <td>${pfBadge(r.passOverall)}</td><td>${bktBadge(r.bucket)}</td>
     </tr>`;
   }).join('');
-  return `<div class="panel"><div class="panel-title">All Students</div>
-    <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center">
-      <input type="text" id="stu-search" placeholder="Search by name…" oninput="filtST(this.value)"
-        style="padding:6px 12px;border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.82rem;background:var(--surface);color:var(--text);outline:none;width:220px">
-    </div>
-    <div class="tw" id="stu-table"><table><thead><tr>
-      <th>Name</th><th>Sec</th><th>P</th><th>Total</th><th>%</th>
-      ${subjCols}<th>Pass</th><th>Bucket</th>
-    </tr></thead><tbody id="stu-tbody">${rows}</tbody></table></div></div>`;
 }
-function filtST(q){
-  const q2=q.toLowerCase();
+
+function filtST(){
+  const q=(document.getElementById('stu-search')?.value||'').toLowerCase();
+  const subj=document.getElementById('stu-subj')?.value||'all';
+  const bkt=document.getElementById('stu-bkt')?.value||'all';
+  const pass=document.getElementById('stu-pass')?.value||'all';
+  let vis=0;
   document.querySelectorAll('#stu-tbody tr').forEach(tr=>{
-    tr.style.display=tr.cells[0]?.textContent.toLowerCase().includes(q2)?'':'none';
+    const nameMatch=!q||tr.dataset.name?.includes(q);
+    const bktMatch=bkt==='all'||tr.dataset.bucket===bkt;
+    const passMatch=pass==='all'||tr.dataset.pass===pass;
+    const subjMatch=subj==='all'||tr.dataset.failing?.split(',').includes(subj);
+    // subj filter: show students failing that subject, OR show all if 'all'
+    const show=nameMatch&&bktMatch&&passMatch&&(subj==='all'||subjMatch);
+    tr.style.display=show?'':'none';
+    if(show) vis++;
   });
+  const cnt=document.getElementById('stu-count');
+  if(cnt) cnt.textContent=`${vis} student${vis!==1?'s':''} shown`;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -851,30 +1023,107 @@ function filtST(q){
 // ═══════════════════════════════════════════════════════════
 function tabSubjects(data){
   const subjs=getSubjs();
+  const prelims=getPrelimsSorted();
+  const isMixed=schemaIsMixed();
+  const hasTrend=prelims.length>1;
+
   const rows=subjs.map(s=>{
     const sr=data.map(r=>r.subjectResults?.[s.id]).filter(Boolean);
     const absCnt=sr.filter(r=>r.score===null).length;
     const pres=sr.filter(r=>r.score!==null);
     const passCnt=pres.filter(r=>r.pass===true).length;
     const passRate=pres.length?passCnt/pres.length:0;
-    const vals=pres.map(r=>r.score).filter(v=>v!==null).sort((a,b)=>a-b);
+    const vals=isMixed
+      ? pres.map(r=>r.pctSubj!==null?+(r.pctSubj*100).toFixed(1):null).filter(v=>v!==null).sort((a,b)=>a-b)
+      : pres.map(r=>r.score).filter(v=>v!==null).sort((a,b)=>a-b);
     const avg=vals.length?fmtAvg(vals):null;
     const med=vals.length?vals[Math.floor(vals.length/2)]:null;
+    const maxDisp=isMixed?'100%':s.totalMax;
+    const avgDisp=avg!==null?(isMixed?avg.toFixed(1)+'%':avg.toFixed(1)):'—';
+    const medDisp=med!==null?(isMixed?med.toFixed(1)+'%':String(med)):'—';
     return `<tr>
       <td style="font-weight:600">${s.label}</td>
-      <td>${s.cols.join(' + ')}</td>
-      <td>${s.totalMax}</td>
+      <td style="font-size:.75rem;color:var(--muted)">${s.cols.join(' + ')}</td>
+      <td>${maxDisp}</td>
       <td style="color:${passRate>=.7?'var(--green)':passRate>=.5?'var(--amber)':'var(--red)'};font-weight:600">${fmtPct(passRate)}</td>
-      <td>${avg!==null?avg.toFixed(1):'—'}</td>
-      <td>${med!==null?med:'—'}</td>
+      <td>${avgDisp}</td>
+      <td>${medDisp}</td>
       <td style="color:var(--muted)">${absCnt}</td>
-      <td style="min-width:120px">${mkPbar(passRate,passRate>=.7?'var(--green)':passRate>=.5?'var(--amber)':'var(--red)')}</td>
+      <td style="min-width:110px">${mkPbar(passRate,passRate>=.7?'var(--green)':passRate>=.5?'var(--amber)':'var(--red)')}</td>
     </tr>`;
   }).join('');
-  return `<div class="panel"><div class="panel-title">Subject Performance</div>
+
+  const chartHtml=hasTrend?`
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-title">Average Score by Subject Across ${G.schema?.examLabel||'Exam'}s${isMixed?' (normalised %)':''}</div>
+      <div style="height:260px"><canvas id="ch-subj-trend"></canvas></div>
+    </div>`:'';
+
+  return `${chartHtml}<div class="panel"><div class="panel-title">Subject Performance Summary</div>
     <div class="tw"><table><thead><tr>
       <th>Subject</th><th>Columns</th><th>Max</th><th>Pass%</th><th>Avg</th><th>Median</th><th>Absent</th><th>Pass Bar</th>
     </tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+
+function renderSubjectTrendChart(data){
+  const c=document.getElementById('ch-subj-trend'); if(!c) return;
+  const existing=Chart.getChart(c); if(existing) existing.destroy();
+  const subjs=getSubjs();
+  const prelims=getPrelimsSorted();
+  const isMixed=schemaIsMixed();
+  const examLabel=G.schema?.examLabel||'Exam';
+
+  // Palette — distinct colours per subject
+  const PALETTE=[
+    'rgba(59,111,206,.85)','rgba(26,158,107,.85)','rgba(214,63,63,.85)',
+    'rgba(197,151,14,.85)','rgba(124,92,191,.85)','rgba(62,180,174,.85)',
+    'rgba(230,126,34,.85)','rgba(149,165,166,.85)',
+  ];
+
+  const getAvg=(p,s)=>{
+    const rows=data.filter(r=>String(r.prelim)===String(p));
+    const vals=rows.map(r=>{
+      const sr=r.subjectResults?.[s.id];
+      if(!sr||sr.score===null) return null;
+      return isMixed ? sr.pctSubj*100 : sr.score;
+    }).filter(v=>v!==null);
+    return vals.length ? +fmtAvg(vals).toFixed(1) : null;
+  };
+
+  const datasets=subjs.map((s,i)=>({
+    label: s.label,
+    data: prelims.map(p=>getAvg(p,s)),
+    borderColor: PALETTE[i%PALETTE.length],
+    backgroundColor: PALETTE[i%PALETTE.length].replace('.85','.12'),
+    borderWidth: 2.5,
+    pointRadius: 4,
+    pointHoverRadius: 6,
+    tension: 0.35,
+    fill: false,
+  }));
+
+  new Chart(c,{
+    type:'line',
+    data:{ labels:prelims.map(p=>String(p)), datasets },
+    options:{
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{
+          display:true,
+          position:'bottom',
+          labels:{color:'#6b7694',font:{family:'Plus Jakarta Sans',size:11},boxWidth:12,padding:14}
+        }
+      },
+      scales:{
+        x:{ticks:{color:'#8892b0',font:{family:'Plus Jakarta Sans',size:11}},grid:{color:'#e8ecf6'},
+           title:{display:true,text:examLabel,color:'#8892b0',font:{size:11}}},
+        y:{ticks:{color:'#8892b0',font:{family:'Plus Jakarta Sans',size:11},
+                  callback:v=>isMixed?v+'%':v},
+           grid:{color:'#e8ecf6'},
+           title:{display:true,text:isMixed?'Average (%)':'Average Score',color:'#8892b0',font:{size:11}}}
+      }
+    }
+  });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1014,66 +1263,100 @@ function arRender(subj){
 // ═══════════════════════════════════════════════════════════
 // TAB: GROWTH
 // ═══════════════════════════════════════════════════════════
+// ── Growth helpers ─────────────────────────────────────────
+// schemaIsMixed: true if multiple exam values with different max marks exist
+function schemaIsMixed(){
+  const em=G.schema?.examMaxes;
+  return em && Object.keys(em).length > 1;
+}
+// getPrelimsSorted: sorts prelims — numbers numerically, strings alphabetically
+function getPrelimsSorted(){
+  const vals=[...new Set(G.all.map(s=>s.prelim))];
+  const allNum=vals.every(v=>!isNaN(Number(v)));
+  return allNum ? vals.sort((a,b)=>Number(a)-Number(b)) : vals.sort();
+}
+// prelimSortKey: numeric sort key for a prelim value
+function prelimSortKey(v){ const n=Number(v); return isNaN(n)?String(v).charCodeAt(0):n; }
+
 function tabGrowth(data){
   const subjs=getSubjs();
-  const prelims=[...new Set(G.all.map(s=>s.prelim))].sort((a,b)=>a-b);
+  const prelims=getPrelimsSorted();
   const examLabel=G.schema?.examLabel||'Prelim';
   if(prelims.length<2) return `<div class="empty" style="margin-top:60px"><div class="empty-icon">📉</div><p>Upload at least 2 ${examLabel}s to see growth trends.</p></div>`;
   const pills=['OVERALL',...subjs.map(s=>s.id)];
   const pillLabels={OVERALL:'Overall',...Object.fromEntries(subjs.map(s=>[s.id,s.label]))};
+  const isMixed=schemaIsMixed();
+  const note=isMixed?`<div style="font-size:.78rem;color:var(--accent);background:rgba(59,111,206,.07);padding:7px 12px;border-radius:7px;margin-bottom:12px">📊 Mixed exam types detected — showing <strong>normalised %</strong> for fair comparison</div>`:'';
   return `
+  ${note}
   <div class="sp" style="margin-bottom:16px">
     ${pills.map((s,i)=>`<div class="sp-pill ${i===0?'active':''}" data-subj="${s}" onclick="switchGS(this)">${pillLabels[s]||s}</div>`).join('')}
   </div>
   <div class="sec-grid">
-    <div class="panel" style="grid-column:1/-1"><div class="panel-title" id="growth-chart-title">Average Growth Between ${examLabel}s — Overall</div><div style="height:230px"><canvas id="ch-growth"></canvas></div></div>
+    <div class="panel" style="grid-column:1/-1"><div class="panel-title" id="growth-chart-title">Growth Between ${examLabel}s — Overall${isMixed?' (%)':''}</div><div style="height:230px"><canvas id="ch-growth"></canvas></div></div>
     <div class="panel" style="grid-column:1/-1"><div class="panel-title">Student Growth Table</div><div id="gtbl-wrap">${buildGrowthTable(data,'OVERALL')}</div></div>
   </div>`;
 }
 
+
 function buildGrowthTable(data,subj){
-  const prelims=[...new Set(G.all.map(s=>s.prelim))].sort((a,b)=>a-b);
+  const prelims=getPrelimsSorted();
+  const isMixed=schemaIsMixed();
   const keys=[...new Set(G.all.map(s=>`${s.rollNo}|||${s.section}`))];
   const filtNames=new Set(data.map(s=>s.name));
   const subjs=getSubjs();
   const subjLabels={OVERALL:'Overall',...Object.fromEntries(subjs.map(s=>[s.id,s.label]))};
-  const subjObj=subjs.find(s=>s.id===subj);
-  const passThresh=subjObj?subjObj.passThresh:null;
+  const examLabel=G.schema?.examLabel||'P';
+  const unit=isMixed?'%':'';
+
+  // getVal: returns the value to display/compare for a student entry
+  // Always % when mixed (so Unit /20 and Semester /60 are on same scale)
+  const getVal=(e,s)=>{
+    if(s==='OVERALL') return isMixed ? +(e.pct*100).toFixed(1) : e.overall;
+    const sr=e.subjectResults?.[s];
+    if(!sr||sr.score===null) return null;
+    return isMixed ? +(( sr.pctSubj||0)*100).toFixed(1) : sr.score;
+  };
 
   const rows=keys.map(k=>{
     const [rn,sec]=k.split('|||');
-    const ents=G.all.filter(s=>String(s.rollNo)===rn&&s.section===sec).sort((a,b)=>a.prelim-b.prelim);
+    const ents=G.all.filter(s=>String(s.rollNo)===String(rn)&&s.section===sec)
+      .sort((a,b)=>prelimSortKey(a.prelim)-prelimSortKey(b.prelim));
     if(!ents.length||!filtNames.has(ents[0].name)) return null;
-    const scores=prelims.map(p=>{ const e=ents.find(s=>s.prelim===p); if(!e) return null; return subj==='OVERALL'?e.overall:(e.subjectResults?.[subj]?.score??null); });
-    const growths=prelims.slice(1).map((p,i)=>{ const a=scores[i],b=scores[i+1]; return (a!==null&&b!==null)?b-a:null; });
+    const scores=prelims.map(p=>{ const e=ents.find(s=>String(s.prelim)===String(p)); return e?getVal(e,subj):null; });
+    const growths=prelims.slice(1).map((_,i)=>{ const a=scores[i],b=scores[i+1]; return (a!==null&&b!==null)?+(b-a).toFixed(1):null; });
     const vg=growths.filter(g=>g!==null);
-    const avgG=vg.length?fmtAvg(vg):null;
+    const avgG=vg.length?+fmtAvg(vg).toFixed(1):null;
     const vs=scores.filter(s=>s!==null);
     const avgScore=vs.length?fmtAvg(vs):null;
-    const predScore=(avgScore!==null&&avgG!==null)?Math.round(avgScore+avgG):null;
-    const predPass=predScore!==null&&passThresh!==null?(predScore>=passThresh?'PASS':'FAIL'):null;
-    return {name:ents[0].name,sec,scores,growths,avgG,avgScore,predScore,predPass};
+    const predVal=avgScore!==null&&avgG!==null?+(avgScore+avgG).toFixed(1):null;
+    // Predict pass: use 35% threshold — for % mode that's 35, for raw use subjMax
+    const subObj=subjs.find(s=>s.id===subj);
+    let predPass=null;
+    if(predVal!==null){
+      if(subj==='OVERALL') predPass=isMixed?(predVal>=35?'PASS':'FAIL'):(predVal>=(G.schema.subjects.reduce((a,s)=>a+s.totalMax,0)*0.35)?'PASS':'FAIL');
+      else if(subObj) predPass=isMixed?(predVal>=35?'PASS':'FAIL'):(predVal>=subObj.passThresh?'PASS':'FAIL');
+    }
+    return {name:ents[0].name,sec,scores,growths,avgG,predVal,predPass};
   }).filter(Boolean);
 
-  const pHdrs=prelims.map(p=>`<th>P${p}</th>`).join('');
-  const gHdrs=prelims.slice(1).map((p,i)=>`<th>G${i+1}</th>`).join('');
-  const examLabel=G.schema?.examLabel||'P';
-
   return `<div class="tw"><table><thead><tr>
-    <th>Name</th><th>Sec</th>${prelims.map(p=>`<th>${examLabel[0]}${p}</th>`).join('')}
+    <th>Name</th><th>Sec</th>
+    ${prelims.map(p=>`<th>${p}${unit}</th>`).join('')}
     ${prelims.slice(1).map((_,i)=>`<th>↑${i+1}</th>`).join('')}
     <th>Avg Growth</th><th>Predicted</th><th>Trend</th>
   </tr></thead><tbody>
   ${rows.map(r=>`<tr>
     <td style="font-weight:600;white-space:nowrap">${r.name}</td><td>${r.sec}</td>
-    ${r.scores.map(s=>s!==null?`<td>${s}</td>`:'<td style="color:var(--muted)">—</td>').join('')}
-    ${r.growths.map(g=>g!==null?`<td>${growArr(g)}</td>`:'<td style="color:var(--muted)">—</td>').join('')}
+    ${r.scores.map(s=>s!==null?`<td>${s}${unit}</td>`:`<td style="color:var(--muted)">—</td>`).join('')}
+    ${r.growths.map(g=>g!==null?`<td>${growArr(g)}</td>`:`<td style="color:var(--muted)">—</td>`).join('')}
     <td>${r.avgG!==null?growArr(r.avgG):'—'}</td>
-    <td style="font-weight:600;color:${r.predScore!==null?(r.predPass==='PASS'?'var(--green)':'var(--red)'):'var(--muted)'}">${r.predScore??'—'}</td>
+    <td style="font-weight:600;color:${r.predVal!==null?(r.predPass==='PASS'?'var(--green)':'var(--red)'):'var(--muted)'}">${r.predVal??'—'}${r.predVal!==null?unit:''}</td>
     <td>${r.predPass?pfBadge(r.predPass):'—'}</td>
   </tr>`).join('')}
   </tbody></table></div>`;
 }
+
 
 function switchGS(el){
   document.querySelectorAll('.sp-pill').forEach(p=>p.classList.remove('active'));
@@ -1089,39 +1372,65 @@ function switchGS(el){
 
 function renderGrowthChart(data,subj){
   subj=subj||'OVERALL';
-  const prelims=[...new Set(G.all.map(s=>s.prelim))].sort((a,b)=>a-b);
+  const prelims=getPrelimsSorted();
   if(prelims.length<2) return;
+  const isMixed=schemaIsMixed();
   const sections=[...new Set(data.map(s=>s.section).filter(s=>s&&s!=='—'))].sort();
   const hasSec=sections.length>1;
   const c=document.getElementById('ch-growth'); if(!c) return;
-  const labels=prelims.slice(1).map((p,i)=>`P${prelims[i]}→P${p}`);
+  // Destroy any existing Chart.js instance on this canvas before creating a new one
+  const existing=Chart.getChart(c);
+  if(existing) existing.destroy();
+  const labels=prelims.slice(1).map((p,i)=>`${prelims[i]}→${p}`);
+
+  const getVal=(s,sj)=>{
+    if(sj==='OVERALL') return isMixed?s.pct*100:s.overall;
+    const sr=s.subjectResults?.[sj]; return sr&&sr.score!==null?(isMixed?(sr.pctSubj||0)*100:sr.score):null;
+  };
+
   const avgGrowth=(sec)=>prelims.slice(1).map((p,i)=>{
-    const d=data.filter(s=>(!hasSec||s.section===sec));
-    const prev=d.filter(s=>s.prelim===prelims[i]).map(s=>subj==='OVERALL'?s.overall:(s.subjectResults?.[subj]?.score??null)).filter(v=>v!==null);
-    const curr=d.filter(s=>s.prelim===p).map(s=>subj==='OVERALL'?s.overall:(s.subjectResults?.[subj]?.score??null)).filter(v=>v!==null);
+    const d=hasSec?data.filter(s=>s.section===sec):data;
+    const prev=d.filter(s=>String(s.prelim)===String(prelims[i])).map(s=>getVal(s,subj)).filter(v=>v!=null);
+    const curr=d.filter(s=>String(s.prelim)===String(p)).map(s=>getVal(s,subj)).filter(v=>v!=null);
     return prev.length&&curr.length?+(fmtAvg(curr)-fmtAvg(prev)).toFixed(1):null;
   });
+
   const COLORS=['rgba(59,111,206,.7)','rgba(124,92,191,.7)','rgba(62,207,142,.7)'];
-  const datasets=hasSec?sections.map((s,i)=>({label:`Sec ${s}`,data:avgGrowth(s),backgroundColor:COLORS[i]||COLORS[0],borderRadius:4}))
+  const datasets=hasSec
+    ?sections.map((s,i)=>({label:`Sec ${s}`,data:avgGrowth(s),backgroundColor:COLORS[i]||COLORS[0],borderRadius:4}))
     :[{label:'Avg Growth',data:avgGrowth(null),backgroundColor:'rgba(59,111,206,.7)',borderRadius:4}];
   new Chart(c,{type:'bar',data:{labels,datasets},
-    options:{...cdOpts(),plugins:{legend:{display:hasSec,labels:{color:'#6b7694',font:{family:'Plus Jakarta Sans',size:11}}}},
-      scales:{x:{ticks:{color:'#8892b0'},grid:{color:'#e8ecf6'}},y:{ticks:{color:'#8892b0',callback:v=>v>0?'+'+v:v},grid:{color:'#e8ecf6'}}}}});
+    options:{...cdOpts(),
+      plugins:{legend:{display:hasSec,labels:{color:'#6b7694',font:{family:'Plus Jakarta Sans',size:11}}}},
+      scales:{x:{ticks:{color:'#8892b0'},grid:{color:'#e8ecf6'}},
+              y:{ticks:{color:'#8892b0',callback:v=>(v>0?'+':'')+v+(isMixed?'%':'')},grid:{color:'#e8ecf6'}}}}});
 }
+
 
 // ═══════════════════════════════════════════════════════════
 // TAB: KMEANS
 // ═══════════════════════════════════════════════════════════
 function tabKmeans(data){
-  const subjs=getSubjs();
   if(!data.length) return '<div class="empty"><div class="empty-icon">🔬</div><p>No data.</p></div>';
+  const subjs=getSubjs();
+  const subjOpts=subjs.map(s=>`<option value="${s.id}">${s.label}</option>`).join('');
   return `
-  <div class="panel" style="margin-bottom:16px">
-    <div class="panel-title">K-Means Clustering</div>
+  <div class="panel">
+    <div class="panel-title">🔬 K-Means Clusters</div>
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap">
       <label style="font-size:.82rem;color:var(--muted)">Clusters (k): <strong id="k-val">3</strong></label>
-      <input type="range" id="k-slider" min="2" max="6" value="3" oninput="document.getElementById('k-val').textContent=this.value;runKmeans(getFilt())"
+      <input type="range" id="k-slider" min="2" max="6" value="3"
+        oninput="document.getElementById('k-val').textContent=this.value;runKmeans(getFilt())"
         style="width:120px;accent-color:var(--accent)">
+      <select id="km-subj-filter" onchange="kmFilterRows()"
+        style="padding:5px 10px;border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.81rem;background:var(--surface);color:var(--text);outline:none">
+        <option value="all">All Subjects</option>${subjOpts}
+      </select>
+      <select id="km-cluster-filter" onchange="kmFilterRows()"
+        style="padding:5px 10px;border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.81rem;background:var(--surface);color:var(--text);outline:none">
+        <option value="all">All Clusters</option>
+      </select>
+      <span id="km-count" style="font-size:.78rem;color:var(--muted)"></span>
     </div>
     <div id="km-out"></div>
   </div>`;
@@ -1133,27 +1442,88 @@ function runKmeans(data){
   const pts=data.filter(s=>s.absCnt===0).map(s=>({
     name:s.name, sec:s.section, prelim:s.prelim, pass:s.passOverall,
     scores:subjs.map(sub=>s.subjectResults?.[sub.id]?.score??0),
-    overall:s.overall, pct:s.pct
+    overall:s.overall, pct:s.pct,
+    subjectResults:s.subjectResults
   }));
   if(pts.length<k){ document.getElementById('km-out').innerHTML='<p style="color:var(--muted);font-size:.83rem;">Not enough students for this k value.</p>'; return; }
   const result=kmeansRun(pts.map(p=>p.scores),k);
   const clusters=Array.from({length:k},(_,i)=>pts.filter((_,j)=>result.assignments[j]===i));
   clusters.sort((a,b)=>fmtAvg(b.map(s=>s.overall))-fmtAvg(a.map(s=>s.overall)));
-  const labels=['🥇 High','🥈 Mid-High','🥉 Mid','⚠ Low','🔴 Critical','🟣 Group 6'];
+  const labels=['High','Mid-High','Mid','Low','Critical','Group 6'];
   const colors=['var(--green)','var(--accent)','var(--amber)','var(--red)','#c0392b','var(--accent2)'];
-  document.getElementById('km-out').innerHTML=clusters.map((cl,i)=>{
+  const emojis=['🥇','🥈','🥉','⚠️','🔴','🟣'];
+
+  // Assign cluster index and label to each point
+  pts.forEach((p,j)=>{
+    const ci=result.assignments[j];
+    // find sorted cluster index
+    const sortedIdx=clusters.findIndex(cl=>cl.includes(p));
+    p.clusterIdx=sortedIdx;
+    p.clusterLabel=labels[sortedIdx]||`Cluster ${sortedIdx+1}`;
+  });
+
+  // Update cluster filter dropdown
+  const clSel=document.getElementById('km-cluster-filter');
+  if(clSel){
+    clSel.innerHTML='<option value="all">All Clusters</option>'+
+      clusters.map((cl,i)=>`<option value="${i}">${emojis[i]} ${labels[i]} (${cl.length})</option>`).join('');
+  }
+
+  // Build flat table
+  const subjHdrs=subjs.map(s=>`<th>${s.label}</th>`).join('');
+  const rows=pts.map((p,j)=>{
+    const ci=p.clusterIdx;
+    const color=colors[ci]||'var(--muted)';
+    const subjTds=subjs.map(s=>{
+      const sr=p.subjectResults?.[s.id];
+      if(!sr||sr.score===null) return '<td style="color:var(--muted)">AB</td>';
+      const pct2=s.totalMax?sr.score/s.totalMax:0;
+      return `<td style="color:${scoreClr(pct2)}">${sr.score}</td>`;
+    }).join('');
+    return `<tr data-cluster="${ci}" data-failing="${p.subjectResults?Object.entries(p.subjectResults).filter(([,v])=>v.pass===false).map(([k])=>k).join(','):''}">
+      <td style="font-weight:600;white-space:nowrap">${p.name}</td>
+      <td>${p.sec}</td>
+      <td style="color:${scoreClr(p.pct)};font-weight:600">${p.overall}</td>
+      <td>${fmtPct(p.pct)}</td>
+      ${subjTds}
+      <td>${pfBadge(p.pass)}</td>
+      <td><span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:700;border:1px solid ${color};color:${color}">${emojis[ci]} ${labels[ci]||'?'}</span></td>
+    </tr>`;
+  }).join('');
+
+  // Cluster summary cards above the table
+  const summaryCards=clusters.map((cl,i)=>{
     const avg=fmtAvg(cl.map(s=>s.overall));
-    const subjs2=getSubjs();
-    const subjAvgs=subjs2.map(s=>{ const vals=cl.map(p=>p.scores[subjs2.indexOf(s)]); return `${s.label}: ${fmtAvg(vals).toFixed(1)}`; }).join(' | ');
-    return `<div style="margin-bottom:12px;padding:14px 16px;background:var(--surface2);border-radius:10px;border-left:4px solid ${colors[i]}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <strong style="color:${colors[i]}">${labels[i]} Performers</strong>
-        <span style="font-size:.78rem;color:var(--muted)">${cl.length} students · Avg overall: ${avg.toFixed(1)}</span>
-      </div>
-      <div style="font-size:.75rem;color:var(--muted);margin-bottom:8px">${subjAvgs}</div>
-      <div style="font-size:.79rem">${cl.slice(0,8).map(s=>`<span style="display:inline-block;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:2px 8px;margin:2px;font-size:.76rem">${s.name}</span>`).join('')}${cl.length>8?`<span style="color:var(--muted);font-size:.75rem"> +${cl.length-8} more</span>`:''}</div>
+    const avgPct=pts[0]?.TOTAL_MAX?avg/pts[0].TOTAL_MAX:avg/(subjs.reduce((a,s)=>a+s.totalMax,0)||480);
+    return `<div style="padding:10px 14px;background:var(--surface2);border-radius:9px;border-left:3px solid ${colors[i]};flex:1;min-width:120px">
+      <div style="font-size:.72rem;font-weight:700;color:${colors[i]};margin-bottom:3px">${emojis[i]} ${labels[i]}</div>
+      <div style="font-size:1.3rem;font-weight:700;line-height:1">${cl.length}</div>
+      <div style="font-size:.72rem;color:var(--muted)">students · avg ${avg.toFixed(0)}</div>
     </div>`;
   }).join('');
+
+  document.getElementById('km-out').innerHTML=`
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">${summaryCards}</div>
+    <div class="tw"><table><thead><tr>
+      <th>Name</th><th>Sec</th><th>Overall</th><th>%</th>${subjHdrs}<th>Pass</th><th>Cluster</th>
+    </tr></thead><tbody id="km-tbody">${rows}</tbody></table></div>`;
+
+  kmFilterRows();
+}
+
+function kmFilterRows(){
+  const clusterFilter=document.getElementById('km-cluster-filter')?.value||'all';
+  const subjFilter=document.getElementById('km-subj-filter')?.value||'all';
+  let vis=0;
+  document.querySelectorAll('#km-tbody tr').forEach(tr=>{
+    const clMatch=clusterFilter==='all'||tr.dataset.cluster===clusterFilter;
+    const subjMatch=subjFilter==='all'||tr.dataset.failing?.split(',').includes(subjFilter);
+    const show=clMatch&&subjMatch;
+    tr.style.display=show?'':'none';
+    if(show) vis++;
+  });
+  const cnt=document.getElementById('km-count');
+  if(cnt) cnt.textContent=`${vis} student${vis!==1?'s':''} shown`;
 }
 
 function kmeansRun(data,k,iter=100){
@@ -1245,7 +1615,7 @@ function tabPlan(data){
 // ═══════════════════════════════════════════════════════════
 function afterRender(tab,data){
   if(tab==='overview'){
-    const prelims=[...new Set(data.map(s=>s.prelim))].sort((a,b)=>a-b);
+    const prelims=getPrelimsSorted();
     const sections=[...new Set(data.map(s=>s.section).filter(s=>s&&s!=='—'))].sort();
     const examLabel=G.schema?.examLabel||'Prelim';
     const c1=document.getElementById('ch-pass');
@@ -1256,7 +1626,7 @@ function afterRender(tab,data){
         data:prelims.map(p=>{ const r=data.filter(s=>s.prelim===p&&s.section===sec); return r.length?+(r.filter(s=>s.passOverall==='PASS').length/r.length*100).toFixed(1):null; }),
         backgroundColor:COLORS[i]||COLORS[0]}))
         :[{label:'Pass%',data:prelims.map(p=>{ const r=data.filter(s=>s.prelim===p); return r.length?+(r.filter(s=>s.passOverall==='PASS').length/r.length*100).toFixed(1):null; }),backgroundColor:'rgba(59,111,206,.7)',borderRadius:5}];
-      new Chart(c1,{type:'bar',data:{labels:prelims.map(p=>`${examLabel[0]}${p}`),datasets:ds},
+      new Chart(c1,{type:'bar',data:{labels:prelims.map(p=>String(p)),datasets:ds},
         options:{...cdOpts(),plugins:{legend:{display:hasSec,labels:{color:'#6b7694',font:{family:'Plus Jakarta Sans',size:11}}}},
           scales:{x:{ticks:{color:'#8892b0'},grid:{color:'#e8ecf6'}},y:{min:0,max:100,ticks:{color:'#8892b0',callback:v=>v+'%'},grid:{color:'#e8ecf6'}}}}});
     }
@@ -1270,6 +1640,7 @@ function afterRender(tab,data){
         options:{maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#6b7694',font:{family:'Plus Jakarta Sans',size:11},boxWidth:12}}}}});
     }
   }
+  if(tab==='subjects') setTimeout(()=>renderSubjectTrendChart(data),0);
   if(tab==='atrisk') setTimeout(()=>arRender('OVERALL'),0);
   if(tab==='growth') renderGrowthChart(data,'OVERALL');
   if(tab==='kmeans') setTimeout(()=>runKmeans(getFilt()),0);
