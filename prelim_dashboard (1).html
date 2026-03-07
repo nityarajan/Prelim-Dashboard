@@ -1,0 +1,1502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PrelimsIQ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#f5f6fa; --surface:#ffffff; --surface2:#f0f2f8;
+  --border:#e2e6f0; --accent:#3b6fce; --accent2:#7c5cbf;
+  --green:#1a9e6b; --red:#d63f3f; --amber:#c47d0e;
+  --text:#1a1f36; --muted:#6b7694;
+  --shadow:0 1px 4px rgba(30,40,80,.07),0 4px 16px rgba(30,40,80,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+
+/* ── UPLOAD ── */
+#upload-screen{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;
+  background:radial-gradient(ellipse at 25% 15%,rgba(59,111,206,.07)0%,transparent 55%),radial-gradient(ellipse at 75% 85%,rgba(124,92,191,.06)0%,transparent 55%),var(--bg);}
+.logo{font-size:2.1rem;font-weight:700;letter-spacing:-.5px;margin-bottom:6px;}
+.logo span{color:var(--accent);}
+.tagline{color:var(--muted);font-size:.95rem;margin-bottom:44px;font-weight:300;}
+#drop-zone{background:var(--surface);border:2px dashed var(--border);border-radius:20px;padding:52px 44px;
+  text-align:center;max-width:500px;width:100%;transition:all .25s;box-shadow:var(--shadow);}
+#drop-zone:hover,#drop-zone.drag-over{border-color:var(--accent);background:rgba(59,111,206,.03);}
+.upload-icon{font-size:3.2rem;margin-bottom:18px;}
+.upload-title{font-size:1.15rem;font-weight:600;margin-bottom:8px;}
+.upload-sub{color:var(--muted);font-size:.84rem;line-height:1.7;}
+.upload-btn{display:inline-block;margin-top:22px;padding:11px 30px;background:var(--accent);color:#fff;border-radius:10px;font-weight:600;font-size:.88rem;cursor:pointer;}
+.upload-btn:hover{opacity:.85;}
+#file-input{display:none;}
+.format-box{margin-top:24px;max-width:500px;width:100%;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px 22px;}
+.format-box h4{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--accent);margin-bottom:12px;}
+.col-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:5px 12px;}
+.col-item{display:flex;align-items:center;gap:7px;font-size:.81rem;color:var(--muted);}
+.col-dot{width:6px;height:6px;border-radius:50%;background:var(--border);flex-shrink:0;}
+.format-note{margin-top:12px;font-size:.77rem;color:var(--muted);line-height:1.65;border-top:1px solid var(--border);padding-top:11px;}
+.dl-btn{display:inline-block;margin-top:11px;padding:6px 16px;background:transparent;border:1px solid var(--border);border-radius:7px;color:var(--muted);font-size:.78rem;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;transition:all .2s;}
+.dl-btn:hover{border-color:var(--accent);color:var(--accent);}
+
+/* ── WIZARD ── */
+#wizard-screen{display:none;min-height:100vh;flex-direction:column;align-items:center;justify-content:flex-start;padding:32px 20px 80px;
+  background:radial-gradient(ellipse at 25% 15%,rgba(59,111,206,.07)0%,transparent 55%),var(--bg);}
+.wiz-logo{font-size:1.4rem;font-weight:700;letter-spacing:-.3px;margin-bottom:28px;}
+.wiz-logo span{color:var(--accent);}
+.wiz-steps{display:flex;align-items:center;gap:0;margin-bottom:32px;}
+.wiz-step{display:flex;align-items:center;gap:7px;font-size:.8rem;font-weight:600;color:var(--muted);}
+.wiz-step.active{color:var(--accent);}
+.wiz-step.done{color:var(--green);}
+.wiz-num{width:24px;height:24px;border-radius:50%;border:2px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:.72rem;flex-shrink:0;}
+.wiz-step.done .wiz-num{background:var(--green);border-color:var(--green);color:#fff;}
+.wiz-step.active .wiz-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.wiz-line{width:36px;height:2px;background:var(--border);margin:0 4px;}
+.wiz-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 30px;
+  width:100%;max-width:800px;box-shadow:var(--shadow);}
+.wiz-card h3{font-size:1rem;font-weight:700;margin-bottom:5px;}
+.wiz-card > p{font-size:.83rem;color:var(--muted);margin-bottom:20px;line-height:1.6;}
+.wiz-section{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin:16px 0 8px;}
+.map-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.map-row{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);}
+.map-row label{font-size:.79rem;font-weight:600;color:var(--text);min-width:90px;}
+.map-row select,.map-row input[type=text]{flex:1;padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.81rem;font-family:'Plus Jakarta Sans',sans-serif;outline:none;}
+.map-row select:focus,.map-row input:focus{border-color:var(--accent);}
+.detected-tag{font-size:.72rem;color:var(--green);font-weight:600;white-space:nowrap;}
+.undetected-tag{font-size:.72rem;color:var(--amber);font-weight:600;}
+/* Subjects builder */
+.subj-header{display:grid;grid-template-columns:150px 1fr 90px 90px 34px;gap:8px;padding:0 12px;margin-bottom:4px;}
+.subj-header span{font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.subj-row{display:grid;grid-template-columns:150px 1fr 90px 90px 34px;gap:8px;align-items:center;
+  padding:9px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:6px;}
+.subj-row input,.subj-row select{padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.81rem;font-family:'Plus Jakarta Sans',sans-serif;outline:none;width:100%;}
+.subj-row input:focus,.subj-row select:focus{border-color:var(--accent);}
+.cols-selected{font-size:.75rem;color:var(--accent);font-style:italic;}
+.add-subj{display:flex;align-items:center;gap:6px;padding:7px 14px;background:transparent;border:1px dashed var(--border);
+  border-radius:8px;color:var(--muted);font-size:.81rem;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;transition:all .2s;width:fit-content;margin-top:4px;}
+.add-subj:hover{border-color:var(--accent);color:var(--accent);}
+.del-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;padding:2px 4px;border-radius:4px;line-height:1;}
+.del-btn:hover{color:var(--red);}
+.wiz-nav{display:flex;gap:10px;margin-top:24px;justify-content:flex-end;}
+.wiz-btn-p{padding:9px 24px;border-radius:9px;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;font-size:.85rem;cursor:pointer;background:var(--accent);color:#fff;border:none;transition:opacity .2s;}
+.wiz-btn-p:hover{opacity:.88;}
+.wiz-btn-s{padding:9px 22px;border-radius:9px;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;font-size:.85rem;cursor:pointer;background:transparent;color:var(--muted);border:1px solid var(--border);}
+.wiz-btn-s:hover{border-color:var(--accent);color:var(--accent);}
+.col-chip{display:inline-block;padding:2px 7px;background:rgba(59,111,206,.1);border-radius:4px;font-family:'DM Mono',monospace;font-size:.72rem;color:var(--accent);margin:1px;}
+/* Confirm step */
+.confirm-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.confirm-item{padding:10px 14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);}
+.confirm-item .ci-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px;}
+.confirm-item .ci-value{font-size:.84rem;color:var(--text);font-weight:500;}
+.confirm-item .ci-sub{font-size:.75rem;color:var(--muted);margin-top:2px;}
+.pass-note{padding:12px 16px;background:rgba(26,158,107,.07);border:1px solid rgba(26,158,107,.2);border-radius:8px;font-size:.82rem;color:var(--green);margin-top:12px;}
+
+/* ── LOADING ── */
+#loading-screen{display:none;min-height:100vh;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:var(--bg);}
+.spinner{width:42px;height:42px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ── DASHBOARD ── */
+#dashboard{display:none;}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);box-shadow:0 1px 0 var(--border),0 2px 8px rgba(30,40,80,.04);
+  padding:0 24px;height:56px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;}
+.topbar-logo{font-size:1.2rem;font-weight:700;letter-spacing:-.3px;margin-right:8px;}
+.topbar-logo span{color:var(--accent);}
+#fbadge{font-size:.75rem;color:var(--muted);padding:3px 10px;background:var(--surface2);border-radius:20px;border:1px solid var(--border);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.topbar-filters{display:flex;gap:8px;margin-left:auto;}
+.topbar-filters select{padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.8rem;color:var(--text);outline:none;cursor:pointer;}
+.topbar-btn{padding:6px 14px;background:transparent;border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.78rem;color:var(--muted);cursor:pointer;transition:all .2s;}
+.topbar-btn:hover{border-color:var(--accent);color:var(--accent);}
+.topbar-btn.export-btn{background:var(--accent);color:#fff;border-color:var(--accent);}
+.topbar-btn.export-btn:hover{opacity:.85;}
+.nav-tabs{display:flex;gap:4px;padding:10px 24px 0;background:var(--surface);border-bottom:1px solid var(--border);}
+.nav-tab{padding:8px 16px;border-radius:8px 8px 0 0;font-size:.82rem;font-weight:500;cursor:pointer;color:var(--muted);border:1px solid transparent;border-bottom:none;transition:all .15s;}
+.nav-tab:hover{color:var(--text);}
+.nav-tab.active{background:var(--bg);color:var(--accent);font-weight:600;border-color:var(--border);}
+#tab-content{padding:22px 24px;min-height:calc(100vh - 112px);}
+
+/* ── LAYOUT ── */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;position:relative;overflow:hidden;box-shadow:var(--shadow);}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent);border-radius:3px 3px 0 0;}
+.stat-card.red::before{background:var(--red);}
+.stat-card.green::before{background:var(--green);}
+.stat-card.amber::before{background:var(--amber);}
+.stat-card.purple::before{background:var(--accent2);}
+.stat-num{font-size:2rem;font-weight:700;line-height:1;margin-bottom:5px;}
+.stat-label{font-size:.75rem;color:var(--muted);font-weight:500;}
+.sec-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;box-shadow:var(--shadow);}
+.panel-title{font-size:.88rem;font-weight:700;margin-bottom:14px;color:var(--text);}
+.tw{overflow-x:auto;border-radius:9px;border:1px solid var(--border);}
+table{width:100%;border-collapse:collapse;font-size:.82rem;}
+th{text-align:left;padding:9px 13px;background:var(--surface2);color:var(--muted);font-weight:700;font-size:.71rem;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap;border-bottom:2px solid var(--border);}
+td{padding:8px 13px;border-bottom:1px solid var(--border);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(59,111,206,.04);}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:700;}
+.b-pass{background:rgba(26,158,107,.1);color:var(--green);font-weight:700;}
+.b-fail{background:rgba(214,63,63,.1);color:var(--red);font-weight:700;}
+.b-hor{background:rgba(59,111,206,.12);color:var(--accent);}
+.b-umor{background:rgba(124,92,191,.12);color:var(--accent2);}
+.b-lmor{background:rgba(197,151,14,.12);color:var(--amber);}
+.b-lor{background:rgba(214,63,63,.12);color:var(--red);}
+.b-abs{background:rgba(107,118,148,.12);color:var(--muted);}
+.pbar{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;}
+.pbar-f{height:100%;border-radius:3px;transition:width .4s;}
+.empty{text-align:center;padding:40px;color:var(--muted);}
+.empty-icon{font-size:2rem;margin-bottom:10px;}
+.sp{display:flex;gap:6px;flex-wrap:wrap;}
+.sp-pill{padding:5px 12px;border-radius:20px;font-size:.78rem;font-weight:600;cursor:pointer;border:1px solid var(--border);color:var(--muted);background:var(--surface);transition:all .15s;}
+.sp-pill.active,.sp-pill:hover{background:var(--accent);color:#fff;border-color:var(--accent);}
+.au{color:var(--green);font-weight:600;}
+.ad{color:var(--red);font-weight:600;}
+.af{color:var(--muted);}
+.rec{padding:11px 15px;border-left:3px solid var(--accent);border-radius:0 8px 8px 0;background:#eef2fb;margin-bottom:8px;font-size:.82rem;line-height:1.6;}
+.rec.warn{border-color:var(--amber);background:#fdf6e8;}
+.rec.danger{border-color:var(--red);background:#fdf0f0;}
+.rec strong{display:block;font-size:.78rem;margin-bottom:2px;}
+@media(max-width:700px){.sec-grid{grid-template-columns:1fr;}.map-grid{grid-template-columns:1fr;}.subj-row{grid-template-columns:1fr 1fr 70px 70px 34px;}.confirm-grid{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+
+<!-- UPLOAD -->
+<div id="upload-screen">
+  <div class="logo">Prelims<span>IQ</span></div>
+  <div class="tagline">Teacher analytics dashboard for prelim exams</div>
+  <div id="drop-zone">
+    <div class="upload-icon">📊</div>
+    <div class="upload-title">Upload your marks spreadsheet</div>
+    <div class="upload-sub">Any Excel file with student names, roll numbers, and subject marks.<br>We'll auto-detect your columns.</div>
+    <label class="upload-btn" for="file-input">Choose File</label>
+    <input type="file" id="file-input" accept=".xlsx,.xls,.csv">
+  </div>
+  <div class="format-box" style="max-width:500px;">
+    <h4>📝 Need a template?</h4>
+    <div class="col-grid">
+      <div class="col-item"><div class="col-dot" style="background:var(--accent)"></div>Prelim / Unit number</div>
+      <div class="col-item"><div class="col-dot" style="background:var(--accent)"></div>Roll No., Name</div>
+      <div class="col-item"><div class="col-dot"></div>Section, Gender (optional)</div>
+      <div class="col-item"><div class="col-dot"></div>Subject marks columns</div>
+    </div>
+    <div class="format-note">Column names are flexible — the app will ask you to confirm the mapping before running.<br>
+      <button class="dl-btn" onclick="dlTemplate()">⬇ Download sample template</button>
+    </div>
+  </div>
+</div>
+
+<!-- WIZARD -->
+<div id="wizard-screen">
+  <div class="wiz-logo">Prelims<span>IQ</span></div>
+  <div class="wiz-steps">
+    <div class="wiz-step active" id="ws1"><div class="wiz-num">1</div>Confirm Columns</div>
+    <div class="wiz-line"></div>
+    <div class="wiz-step" id="ws2"><div class="wiz-num">2</div>Define Subjects</div>
+    <div class="wiz-line"></div>
+    <div class="wiz-step" id="ws3"><div class="wiz-num">3</div>Review &amp; Launch</div>
+  </div>
+  <div class="wiz-card" id="wiz-body"></div>
+</div>
+
+<!-- LOADING -->
+<div id="loading-screen">
+  <div class="spinner"></div>
+  <div id="load-msg" style="color:var(--muted);font-size:.88rem;">Processing…</div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <div class="topbar">
+    <div class="topbar-logo">Prelims<span>IQ</span></div>
+    <div id="fbadge">—</div>
+    <div class="topbar-filters">
+      <select id="fp"></select>
+      <select id="fs"></select>
+      <select id="fg">
+        <option value="all">All Genders</option>
+        <option value="M">Boys</option>
+        <option value="F">Girls</option>
+      </select>
+    </div>
+    <button class="topbar-btn export-btn" onclick="exportGovExcel()">⬇ Export (Govt Format)</button>
+    <button class="topbar-btn" onclick="resetApp()">↑ New File</button>
+  </div>
+  <div class="nav-tabs" id="nav-tabs">
+    <div class="nav-tab active" data-tab="overview">📊 Overview</div>
+    <div class="nav-tab" data-tab="students">👩‍🎓 Students</div>
+    <div class="nav-tab" data-tab="subjects">📚 Subjects</div>
+    <div class="nav-tab" data-tab="atrisk">⚠️ At-Risk</div>
+    <div class="nav-tab" data-tab="growth">📈 Growth</div>
+    <div class="nav-tab" data-tab="kmeans">🔬 Clusters</div>
+    <div class="nav-tab" data-tab="plan">📋 Action Plan</div>
+  </div>
+  <div id="tab-content"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// GLOBAL STATE
+// ═══════════════════════════════════════════════════════════
+let G = { all:[], fileName:'', schema:null, rawHeaders:[], rawRows:[] };
+let activeTab = 'overview';
+
+// ═══════════════════════════════════════════════════════════
+// SCHEMA — built by wizard, drives all calculations
+// schema = {
+//   prelim: 'PRELIM',          // column name for prelim/unit number
+//   rollNo: 'ROLL NO.',        // column name
+//   name: 'NAME',              // column name
+//   section: 'SECTION'|null,   // optional
+//   gender: 'GENDER'|null,     // optional
+//   examLabel: 'Prelim',       // display label (Prelim / Unit / Term)
+//   subjects: [
+//     { id:'MATH', label:'Math', cols:['MATH 1','MATH 2'], maxPerCol:40, totalMax:80, passThresh:28 },
+//     { id:'ENGLISH', label:'English', cols:['ENGLISH'], maxPerCol:80, totalMax:80, passThresh:28 },
+//     ...
+//   ]
+// }
+// ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// TEMPLATE DOWNLOAD
+// ═══════════════════════════════════════════════════════════
+function dlTemplate() {
+  const wb = XLSX.utils.book_new();
+  const hdr = ['PRELIM','ROLL NO.','NAME','SECTION','GENDER','ENGLISH','HINDI','MARATHI','MATH 1','MATH 2','SCIENCE 1','SCIENCE 2','HISTORY','GEOGRAPHY'];
+  const rows = [hdr,
+    [1,1,'Priya Sharma','A','F',62,55,48,32,30,28,25,22,20],
+    [1,2,'Rahul Verma','A','M',45,38,'AB',28,22,20,18,15,14],
+    [2,1,'Priya Sharma','A','F',68,58,52,35,33,30,28,24,22],
+    [2,2,'Rahul Verma','A','M',50,40,36,30,25,22,20,18,16],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = hdr.map(h=>({wch:Math.max(h.length+2,12)}));
+  XLSX.utils.book_append_sheet(wb, ws, 'RAW DATA');
+  XLSX.writeFile(wb, 'prelim_marks_template.xlsx');
+}
+
+// ═══════════════════════════════════════════════════════════
+// FILE LOAD → WIZARD
+// ═══════════════════════════════════════════════════════════
+document.getElementById('file-input').addEventListener('change', e => { if(e.target.files[0]) loadFile(e.target.files[0]); });
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', ()=>dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e=>{ e.preventDefault(); dz.classList.remove('drag-over'); if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+
+function loadFile(file) {
+  G.fileName = file.name;
+  document.getElementById('fbadge').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const wb = XLSX.read(ev.target.result, {type:'array'});
+      const sn = wb.SheetNames.find(n=>/raw|data|marks|result|result/i.test(n)) || wb.SheetNames[0];
+      const raw = XLSX.utils.sheet_to_json(wb.Sheets[sn], {defval:null, raw:true});
+      if(!raw.length){ alert('No data found in file.'); return; }
+      G.rawRows = raw;
+      G.rawHeaders = Object.keys(raw[0]).map(h=>h.trim().replace(/^['"]|['"]$/g,'').trim());
+      document.getElementById('upload-screen').style.display = 'none';
+      startWizard();
+    } catch(err){ console.error(err); alert('Could not read file. Please check the format.'); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ═══════════════════════════════════════════════════════════
+// WIZARD
+// ═══════════════════════════════════════════════════════════
+let W = { step:1, mapping:{}, subjects:[] };
+
+function startWizard() {
+  W = { step:1, mapping:{}, subjects:[] };
+  autoDetectMapping();
+  document.getElementById('wizard-screen').style.display = 'flex';
+  renderWizardStep(1);
+}
+
+const CLEAN = h => h.trim().replace(/^['"]|['"]$/g,'').toUpperCase();
+
+// Auto-detect column mapping using fuzzy matching
+function autoDetectMapping() {
+  const hdrs = G.rawHeaders;
+  const find = (...pats) => {
+    for(const p of pats){
+      const r = new RegExp(p,'i');
+      const h = hdrs.find(h=>r.test(CLEAN(h)));
+      if(h) return h;
+    }
+    return '';
+  };
+  W.mapping = {
+    prelim:  find('PRELIM','UNIT','TERM','TEST','EXAM','SEM'),
+    rollNo:  find('ROLL','SR.?\\s*NO','SER'),
+    name:    find('NAME','STUDENT'),
+    section: find('SECTION','CLASS','DIV','BATCH','SEC'),
+    gender:  find('GENDER','SEX','BOY'),
+    examLabel: 'Prelim',
+  };
+  // Detect leftover columns as potential subject columns
+  const usedCols = Object.values(W.mapping).filter(Boolean);
+  W.availSubjCols = hdrs.filter(h => !usedCols.includes(h));
+  // Auto-suggest subject groupings
+  autoSuggestSubjects();
+}
+
+function autoSuggestSubjects() {
+  const hdrs = W.availSubjCols;
+  const CNAME = h => CLEAN(h);
+  const used = new Set();
+  const subjs = [];
+
+  // Group: Math
+  const mathCols = hdrs.filter(h => /MATH|MATHS|GANIT|गणित/.test(CNAME(h)));
+  if(mathCols.length) { subjs.push(makeSubj('MATH','Math',mathCols,mathCols.length>1?40:80)); mathCols.forEach(c=>used.add(c)); }
+
+  // Group: Science
+  const sciCols = hdrs.filter(h => /SCIENCE|SCI|VIGYAN|विज्ञान/.test(CNAME(h)));
+  if(sciCols.length) { subjs.push(makeSubj('SCIENCE','Science',sciCols,sciCols.length>1?40:80)); sciCols.forEach(c=>used.add(c)); }
+
+  // Group: SST / History+Geo
+  const histCols = hdrs.filter(h => /HIST|HISTORY|ITIHAS|इतिहास/.test(CNAME(h)));
+  const geoCols  = hdrs.filter(h => /GEO|GEOGRAPHY|BHUGOL|भूगोल/.test(CNAME(h)));
+  if(histCols.length && geoCols.length) {
+    subjs.push(makeSubj('SST','Social Science',[...histCols,...geoCols],40));
+    [...histCols,...geoCols].forEach(c=>used.add(c));
+  } else if(histCols.length) { subjs.push(makeSubj('HISTORY','History',histCols,80)); histCols.forEach(c=>used.add(c)); }
+    else if(geoCols.length)  { subjs.push(makeSubj('GEOGRAPHY','Geography',geoCols,80)); geoCols.forEach(c=>used.add(c)); }
+
+  // Single language subjects
+  const langPatterns = [
+    ['ENGLISH','English',/ENGLISH|ENG/],
+    ['HINDI','Hindi',/HINDI|HIN/],
+    ['MARATHI','Marathi',/MARATHI|MAR/],
+    ['URDU','Urdu',/URDU/],
+  ];
+  for(const [id,label,pat] of langPatterns) {
+    const cols = hdrs.filter(h=>pat.test(CNAME(h)) && !used.has(h));
+    if(cols.length) { subjs.push(makeSubj(id,label,cols,cols.length>1?40:80)); cols.forEach(c=>used.add(c)); }
+  }
+
+  // Anything left = unknown subjects (each as single)
+  hdrs.filter(h=>!used.has(h)).forEach(h => {
+    const id = CLEAN(h).replace(/[^A-Z0-9]/g,'_');
+    subjs.push(makeSubj(id, h, [h], 80));
+  });
+
+  W.subjects = subjs;
+}
+
+function makeSubj(id, label, cols, maxPerCol) {
+  const totalMax = maxPerCol * cols.length;
+  return { id, label, cols, maxPerCol, totalMax, passThresh: Math.ceil(totalMax * 0.35) };
+}
+
+// ── WIZARD STEP RENDERER ─────────────────────────────────
+function renderWizardStep(step) {
+  W.step = step;
+  ['ws1','ws2','ws3'].forEach((id,i)=>{
+    const el = document.getElementById(id);
+    el.className = 'wiz-step' + (i+1===step?' active': i+1<step?' done':'');
+  });
+  const body = document.getElementById('wiz-body');
+  if(step===1) body.innerHTML = buildStep1();
+  if(step===2) body.innerHTML = buildStep2();
+  if(step===3) body.innerHTML = buildStep3();
+}
+
+// ── STEP 1: Column Mapping ────────────────────────────────
+function buildStep1() {
+  const hdrs = G.rawHeaders;
+  const opts = ['<option value="">— not present —</option>', ...hdrs.map(h=>`<option value="${h}">${h}</option>`)].join('');
+  const selVal = (val) => opts.replace(`value="${val}"`, `value="${val}" selected`);
+
+  const fields = [
+    { key:'prelim',   label:'Exam / Prelim No.', required:true,  hint:'Column that identifies which exam (e.g. PRELIM, UNIT, TERM)' },
+    { key:'rollNo',   label:'Roll Number',        required:true,  hint:'Student roll / serial number' },
+    { key:'name',     label:'Student Name',       required:true,  hint:'Full name column' },
+    { key:'section',  label:'Section / Class',    required:false, hint:'Class section or division (optional)' },
+    { key:'gender',   label:'Gender / Boy-Girl',  required:false, hint:'Gender column (optional)' },
+  ];
+
+  const mapRows = fields.map(f => {
+    const detected = W.mapping[f.key];
+    const tag = detected ? `<span class="detected-tag">✓ detected</span>` : (f.required ? `<span class="undetected-tag">⚠ required</span>` : '');
+    return `<div class="map-row">
+      <label>${f.label}${f.required?'<span style="color:var(--red)">*</span>':''}</label>
+      <select id="map_${f.key}" onchange="W.mapping['${f.key}']=this.value">${selVal(detected)}</select>
+      ${tag}
+    </div>`;
+  }).join('');
+
+  const examOpts = ['Prelim','Unit','Term','Test','Exam'].map(l=>`<option value="${l}"${l===W.mapping.examLabel?' selected':''}>${l}</option>`).join('');
+
+  return `<h3>Step 1 — Confirm Column Mapping</h3>
+  <p>We auto-detected these columns from your file. Please verify before continuing.</p>
+  <div class="wiz-section">System Columns</div>
+  <div class="map-grid">${mapRows}</div>
+  <div class="map-grid" style="margin-top:8px">
+    <div class="map-row">
+      <label>Exam Label</label>
+      <select id="map_examLabel" onchange="W.mapping.examLabel=this.value">${examOpts}</select>
+    </div>
+  </div>
+  <div class="wiz-section" style="margin-top:16px">All columns detected in your file</div>
+  <div style="margin-bottom:4px">${G.rawHeaders.map(h=>`<span class="col-chip">${h}</span>`).join('')}</div>
+  <div class="wiz-nav">
+    <button class="wiz-btn-s" onclick="cancelWizard()">← Back to Upload</button>
+    <button class="wiz-btn-p" onclick="saveStep1()">Next →</button>
+  </div>`;
+}
+
+function saveStep1() {
+  // Sync selects to W.mapping
+  ['prelim','rollNo','name','section','gender','examLabel'].forEach(k=>{
+    const el = document.getElementById('map_'+k);
+    if(el) W.mapping[k] = el.value;
+  });
+  if(!W.mapping.prelim||!W.mapping.rollNo||!W.mapping.name){
+    alert('Please map the required columns: Exam Number, Roll Number, and Student Name.');
+    return;
+  }
+  // Recompute available subject columns after step 1
+  const usedCols = [W.mapping.prelim,W.mapping.rollNo,W.mapping.name,W.mapping.section,W.mapping.gender].filter(Boolean);
+  W.availSubjCols = G.rawHeaders.filter(h=>!usedCols.includes(h));
+  autoSuggestSubjects();
+  renderWizardStep(2);
+}
+
+// ── STEP 2: Subject Structure ─────────────────────────────
+function buildStep2() {
+  const allCols = W.availSubjCols;
+  const colOpts = allCols.map(h=>`<option value="${h}">${h}</option>`).join('');
+
+  const rows = W.subjects.map((s,i) => buildSubjRow(s,i,allCols)).join('');
+
+  return `<h3>Step 2 — Define Subjects &amp; Max Marks</h3>
+  <p>Each subject row shows which columns map to it and the maximum marks per component. 
+     Split subjects (e.g. Math-1 + Math-2) are combined before pass/fail check. 
+     Drag a column to a different subject to reassign.</p>
+  <div class="wiz-section">Subjects</div>
+  <div class="subj-header">
+    <span>Subject Name</span><span>Source Columns</span><span>Max/Component</span><span>Pass Threshold</span><span></span>
+  </div>
+  <div id="subj-builder">${rows}</div>
+  <button class="add-subj" onclick="addSubject()">＋ Add Subject</button>
+  <div class="wiz-nav">
+    <button class="wiz-btn-s" onclick="renderWizardStep(1)">← Back</button>
+    <button class="wiz-btn-p" onclick="saveStep2()">Next →</button>
+  </div>`;
+}
+
+function buildSubjRow(s, i, allCols) {
+  allCols = allCols || W.availSubjCols;
+  // Multi-select for columns
+  const colCheckboxes = allCols.map(h =>
+    `<label style="display:inline-flex;align-items:center;gap:3px;font-size:.75rem;margin:2px 3px;cursor:pointer">
+      <input type="checkbox" value="${h}" ${s.cols.includes(h)?'checked':''} onchange="updateSubjCols(${i})">
+      <span class="col-chip" style="cursor:pointer">${h}</span>
+    </label>`).join('');
+
+  return `<div class="subj-row" id="subj_${i}">
+    <input type="text" value="${s.label}" placeholder="Subject name" onchange="W.subjects[${i}].label=this.value;W.subjects[${i}].id=this.value.toUpperCase().replace(/\\s+/g,'_')">
+    <div style="max-height:80px;overflow-y:auto">${colCheckboxes}</div>
+    <input type="number" value="${s.maxPerCol}" min="1" max="200" style="width:75px" 
+      onchange="W.subjects[${i}].maxPerCol=+this.value;recalcSubjMax(${i})">
+    <input type="number" value="${s.passThresh}" min="1" max="200" style="width:75px"
+      onchange="W.subjects[${i}].passThresh=+this.value">
+    <button class="del-btn" onclick="deleteSubject(${i})">✕</button>
+  </div>`;
+}
+
+function updateSubjCols(i) {
+  const row = document.getElementById('subj_'+i);
+  const checks = row.querySelectorAll('input[type=checkbox]:checked');
+  W.subjects[i].cols = [...checks].map(c=>c.value);
+  recalcSubjMax(i);
+}
+
+function recalcSubjMax(i) {
+  const s = W.subjects[i];
+  s.totalMax = s.maxPerCol * Math.max(1, s.cols.length);
+  s.passThresh = Math.ceil(s.totalMax * 0.35);
+  // Update the passThresh input
+  const row = document.getElementById('subj_'+i);
+  if(row) { const inp = row.querySelectorAll('input[type=number]'); if(inp[1]) inp[1].value = s.passThresh; }
+}
+
+function addSubject() {
+  W.subjects.push({ id:'SUBJECT_'+W.subjects.length, label:'New Subject', cols:[], maxPerCol:80, totalMax:80, passThresh:28 });
+  document.getElementById('subj-builder').innerHTML = W.subjects.map((s,i)=>buildSubjRow(s,i)).join('');
+}
+
+function deleteSubject(i) {
+  W.subjects.splice(i,1);
+  document.getElementById('subj-builder').innerHTML = W.subjects.map((s,i)=>buildSubjRow(s,i)).join('');
+}
+
+function saveStep2() {
+  // Sync all subject data from DOM
+  W.subjects.forEach((s,i)=>{
+    const row = document.getElementById('subj_'+i);
+    if(!row) return;
+    const inputs = row.querySelectorAll('input[type=number]');
+    s.maxPerCol = +inputs[0].value||s.maxPerCol;
+    s.passThresh = +inputs[1].value||s.passThresh;
+    s.totalMax = s.maxPerCol * Math.max(1,s.cols.length);
+    const nameIn = row.querySelector('input[type=text]');
+    if(nameIn) { s.label=nameIn.value; s.id=nameIn.value.toUpperCase().replace(/\s+/g,'_'); }
+  });
+  W.subjects = W.subjects.filter(s=>s.cols.length>0);
+  if(!W.subjects.length){ alert('Please assign at least one subject.'); return; }
+  renderWizardStep(3);
+}
+
+// ── STEP 3: Review & Launch ───────────────────────────────
+function buildStep3() {
+  const totalMax = W.subjects.reduce((a,s)=>a+s.totalMax,0);
+  const subjItems = W.subjects.map(s=>`
+    <div class="confirm-item">
+      <div class="ci-label">${s.label}</div>
+      <div class="ci-value">${s.cols.length>1?s.cols.join(' + '):s.cols[0]||'—'}</div>
+      <div class="ci-sub">Max: ${s.totalMax} | Pass: ≥${s.passThresh} (${Math.round(s.passThresh/s.totalMax*100)}%)</div>
+    </div>`).join('');
+
+  const sampleCount = G.rawRows.length;
+  const prelims = [...new Set(G.rawRows.map(r => {
+    const v = rawGet(r, W.mapping.prelim); return v;
+  }).filter(Boolean))];
+
+  return `<h3>Step 3 — Review &amp; Launch</h3>
+  <p>Everything looks good. Here's a summary of your setup. Click Launch to run the dashboard.</p>
+  <div class="wiz-section">File Info</div>
+  <div class="confirm-grid">
+    <div class="confirm-item"><div class="ci-label">File</div><div class="ci-value">${G.fileName}</div></div>
+    <div class="confirm-item"><div class="ci-label">Rows detected</div><div class="ci-value">${sampleCount} student records</div></div>
+    <div class="confirm-item"><div class="ci-label">${W.mapping.examLabel} column</div><div class="ci-value">${W.mapping.prelim}</div><div class="ci-sub">${prelims.length} exams: ${prelims.sort().join(', ')}</div></div>
+    <div class="confirm-item"><div class="ci-label">Name / Roll</div><div class="ci-value">${W.mapping.name} / ${W.mapping.rollNo}</div></div>
+  </div>
+  <div class="wiz-section">Subjects (${W.subjects.length} total, max ${totalMax} marks)</div>
+  <div class="confirm-grid">${subjItems}</div>
+  <div class="pass-note">✓ Pass rule: Best of 5 — student passes if they fail at most 1 subject. Each subject pass threshold set above.</div>
+  <div class="wiz-nav">
+    <button class="wiz-btn-s" onclick="renderWizardStep(2)">← Back</button>
+    <button class="wiz-btn-p" onclick="launchDashboard()">🚀 Launch Dashboard</button>
+  </div>`;
+}
+
+function cancelWizard() {
+  document.getElementById('wizard-screen').style.display = 'none';
+  document.getElementById('upload-screen').style.display = 'flex';
+  G.rawRows = []; G.rawHeaders = [];
+}
+
+// ── rawGet: get a value from a raw row using the mapped column name ──
+function rawGet(row, colName) {
+  if(!colName) return null;
+  const clean = k => k.trim().replace(/^['"]|['"]$/g,'').toUpperCase();
+  const found = Object.keys(row).find(k => clean(k) === clean(colName));
+  return found !== undefined ? row[found] : null;
+}
+
+function num(v){ if(v===null||v===undefined||String(v).trim().toUpperCase()==='AB'||String(v).trim()==='') return null; const n=parseFloat(v); return isNaN(n)?null:n; }
+
+// ═══════════════════════════════════════════════════════════
+// LAUNCH: build schema & process rows
+// ═══════════════════════════════════════════════════════════
+function launchDashboard() {
+  G.schema = {
+    prelim:    W.mapping.prelim,
+    rollNo:    W.mapping.rollNo,
+    name:      W.mapping.name,
+    section:   W.mapping.section||null,
+    gender:    W.mapping.gender||null,
+    examLabel: W.mapping.examLabel||'Prelim',
+    subjects:  W.subjects.map(s=>({...s})),
+  };
+
+  document.getElementById('wizard-screen').style.display='none';
+  document.getElementById('loading-screen').style.display='flex';
+  setMsg('Calculating scores…');
+  setTimeout(()=>{
+    try {
+      G.all = processRows(G.rawRows, G.schema);
+      if(!G.all.length){ alert('No valid student data found. Check your column mapping.'); resetApp(); return; }
+      computeBuckets(G.all);
+      setMsg('Building dashboard…');
+      setTimeout(()=>{
+        document.getElementById('loading-screen').style.display='none';
+        document.getElementById('dashboard').style.display='block';
+        initFilters();
+        renderTab('overview');
+      },300);
+    } catch(err){ console.error(err); alert('Error processing data: '+err.message); resetApp(); }
+  },200);
+}
+
+// ═══════════════════════════════════════════════════════════
+// DATA PROCESSING — schema-driven, fully flexible
+// ═══════════════════════════════════════════════════════════
+function processRows(rows, schema) {
+  const TOTAL_MAX = schema.subjects.reduce((a,s)=>a+s.totalMax,0);
+
+  return rows.map(row => {
+    const prelim  = num(rawGet(row, schema.prelim)) ?? 1;
+    const rollNo  = rawGet(row, schema.rollNo);
+    const name    = String(rawGet(row, schema.name)||'').trim();
+    const section = schema.section ? String(rawGet(row,schema.section)||'—').trim() : '—';
+    const rawGender = schema.gender ? String(rawGet(row,schema.gender)||'').trim().toUpperCase() : '';
+    const gender  = rawGender.startsWith('F')||rawGender==='GIRL'||rawGender==='GIRLS' ? 'F' :
+                    rawGender.startsWith('M')||rawGender.startsWith('B') ? 'M' : '—';
+    if(!name && rollNo===null) return null;
+
+    // Process each subject
+    const subjectResults = {};
+    let absCnt = 0;
+
+    schema.subjects.forEach(subj => {
+      const rawVals = subj.cols.map(c => num(rawGet(row, c)));
+      const presentVals = rawVals.filter(v=>v!==null);
+      const absent = presentVals.length === 0; // fully absent = no component present
+      const partial = presentVals.length > 0 && presentVals.length < rawVals.length; // partial = some components missing
+
+      const score = absent ? null : presentVals.reduce((a,b)=>a+b,0);
+      // For partial: score is sum of present components; treated as present but likely fail
+
+      let pass;
+      if(absent) { pass = null; absCnt++; }
+      else pass = score >= subj.passThresh;
+
+      subjectResults[subj.id] = { score, pass, partial, rawVals, presentVals };
+    });
+
+    // failing array, noFail count
+    const failing = schema.subjects.filter(s=>subjectResults[s.id].pass===false).map(s=>s.id);
+    const noFail  = failing.length;
+    const failCount = noFail + absCnt;
+    const passOverall = failCount <= 1 ? 'PASS' : 'FAIL';
+
+    // Overall score (sum of non-null subject scores)
+    const scores = schema.subjects.map(s=>subjectResults[s.id].score).filter(v=>v!==null);
+    const overall = scores.reduce((a,b)=>a+b,0);
+    const pct = TOTAL_MAX > 0 ? overall / TOTAL_MAX : 0;
+
+    // sp map (backward compat with tab functions)
+    const sp = {};
+    schema.subjects.forEach(s=>{ sp[s.id] = subjectResults[s.id].pass; });
+
+    // Build flat score props for tab functions (student[subj.id] = score)
+    const flatScores = {};
+    schema.subjects.forEach(s=>{ flatScores[s.id] = subjectResults[s.id].score; });
+
+    return { prelim, rollNo, name, section, gender,
+      ...flatScores, subjectResults,
+      overall, pct, passOverall, sp, failing, noFail, absCnt, bucket:null,
+      TOTAL_MAX };
+  }).filter(Boolean);
+}
+
+function computeBuckets(students){
+  const prelims=[...new Set(students.map(s=>s.prelim))];
+  prelims.forEach(p=>{
+    const g=students.filter(s=>s.prelim===p&&s.absCnt===0).sort((a,b)=>a.overall-b.overall);
+    const n=g.length; if(!n) return;
+    const q1=g[Math.floor(n*.25)].overall, q2=g[Math.floor(n*.5)].overall, q3=g[Math.floor(n*.75)].overall;
+    g.forEach(s=>{ s.bucket=s.overall<q1?'LOR':s.overall<q2?'LOWER MOR':s.overall<q3?'UPPER MOR':'HOR'; });
+    students.filter(s=>s.prelim===p&&s.absCnt>0).forEach(s=>s.bucket='ABS');
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// FILTERS & TABS
+// ═══════════════════════════════════════════════════════════
+function setMsg(m){ document.getElementById('load-msg').textContent=m; }
+
+function resetApp(){
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('loading-screen').style.display='none';
+  document.getElementById('wizard-screen').style.display='none';
+  document.getElementById('upload-screen').style.display='flex';
+  document.getElementById('file-input').value='';
+  G={all:[],fileName:'',schema:null,rawHeaders:[],rawRows:[]};
+  activeTab='overview';
+}
+
+function initFilters(){
+  const prelims=[...new Set(G.all.map(s=>s.prelim))].sort((a,b)=>a-b);
+  const sections=[...new Set(G.all.map(s=>s.section).filter(s=>s&&s!=='—'))].sort();
+  const examLabel = G.schema.examLabel||'Prelim';
+  document.getElementById('fp').innerHTML=`<option value="all">All ${examLabel}s</option>`+prelims.map(p=>`<option value="${p}">${examLabel} ${p}</option>`).join('');
+  document.getElementById('fs').innerHTML='<option value="all">All Sections</option>'+sections.map(s=>`<option value="${s}">Section ${s}</option>`).join('');
+  ['fp','fs','fg'].forEach(id=>document.getElementById(id).addEventListener('change',()=>renderTab(activeTab)));
+}
+
+function getFilt(){
+  const p=document.getElementById('fp').value, s=document.getElementById('fs').value, g=document.getElementById('fg').value;
+  return G.all.filter(r=>(p==='all'||String(r.prelim)===p)&&(s==='all'||r.section===s)&&(g==='all'||r.gender===g));
+}
+
+document.getElementById('nav-tabs').addEventListener('click',e=>{
+  const tab=e.target.closest('.nav-tab'); if(!tab) return;
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  tab.classList.add('active'); activeTab=tab.dataset.tab; renderTab(activeTab);
+});
+
+function renderTab(tab){
+  try{ Chart.helpers.each(Chart.instances,c=>c.destroy()); }catch(e){}
+  const data=getFilt(), c=document.getElementById('tab-content');
+  const map={overview:tabOverview,students:tabStudents,subjects:tabSubjects,atrisk:tabAtRisk,growth:tabGrowth,kmeans:tabKmeans,plan:tabPlan};
+  c.innerHTML=(map[tab]||tabOverview)(data);
+  afterRender(tab,data);
+}
+
+// ═══════════════════════════════════════════════════════════
+// UTILS (schema-aware)
+// ═══════════════════════════════════════════════════════════
+const fmtPct=v=>(v===null||isNaN(v))?'—':(v*100).toFixed(1)+'%';
+const fmtAvg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;
+const scoreClr=v=>v>=.75?'var(--green)':v>=.5?'var(--amber)':'var(--red)';
+const pfBadge=v=>v==='PASS'?'<span class="badge b-pass">PASS</span>':'<span class="badge b-fail">FAIL</span>';
+function bktBadge(b){
+  if(!b) return '';
+  if(b==='HOR') return '<span class="badge b-hor">HOR</span>';
+  if(b==='UPPER MOR') return '<span class="badge b-umor">Upper MOR</span>';
+  if(b==='LOWER MOR') return '<span class="badge b-lmor">Lower MOR</span>';
+  if(b==='LOR') return '<span class="badge b-lor">LOR</span>';
+  return '<span class="badge b-abs">ABS</span>';
+}
+const mkPbar=(p,c)=>`<div class="pbar"><div class="pbar-f" style="width:${Math.min(100,(p||0)*100)}%;background:${c}"></div></div>`;
+function growArr(v){ if(v===null||isNaN(v)) return '<span class="af">—</span>'; if(v>0) return `<span class="au">▲${v.toFixed(1)}</span>`; if(v<0) return `<span class="ad">▼${Math.abs(v).toFixed(1)}</span>`; return '<span class="af">→0</span>'; }
+const cdOpts=()=>({maintainAspectRatio:false,plugins:{legend:{display:false}},
+  scales:{x:{ticks:{color:'#8892b0',font:{family:'Plus Jakarta Sans',size:11}},grid:{color:'#e8ecf6'}},
+          y:{ticks:{color:'#8892b0',font:{family:'Plus Jakarta Sans',size:11}},grid:{color:'#e8ecf6'}}}});
+
+function getSubjs(){ return G.schema ? G.schema.subjects : []; }
+function uniqueLatest(data){
+  const map=new Map();
+  data.forEach(s=>{ const k=`${s.rollNo}|||${s.section}`; if(!map.has(k)||s.prelim>map.get(k).prelim) map.set(k,s); });
+  return [...map.values()];
+}
+
+// ═══════════════════════════════════════════════════════════
+// TAB: OVERVIEW
+// ═══════════════════════════════════════════════════════════
+function tabOverview(data){
+  const uniq=uniqueLatest(data);
+  const total=uniq.length;
+  const passed=uniq.filter(s=>s.passOverall==='PASS').length;
+  const passRate=total?passed/total:0;
+  const prelims=[...new Set(G.all.map(s=>s.prelim))].sort((a,b)=>a-b);
+  const examLabel=G.schema.examLabel||'Prelim';
+  return `
+  <div class="stat-grid">
+    <div class="stat-card green"><div class="stat-num">${passed}</div><div class="stat-label">Passed (latest ${examLabel})</div></div>
+    <div class="stat-card red"><div class="stat-num">${total-passed}</div><div class="stat-label">Failing</div></div>
+    <div class="stat-card"><div class="stat-num">${fmtPct(passRate)}</div><div class="stat-label">Pass Rate</div></div>
+    <div class="stat-card"><div class="stat-num">${total}</div><div class="stat-label">Total Students</div></div>
+    <div class="stat-card purple"><div class="stat-num">${prelims.length}</div><div class="stat-label">${examLabel}s Uploaded</div></div>
+  </div>
+  <div class="sec-grid">
+    <div class="panel"><div class="panel-title">Pass Rate by ${examLabel}</div><div style="height:200px"><canvas id="ch-pass"></canvas></div></div>
+    <div class="panel"><div class="panel-title">Score Distribution</div><div style="height:200px"><canvas id="ch-dist"></canvas></div></div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// TAB: STUDENTS
+// ═══════════════════════════════════════════════════════════
+function tabStudents(data){
+  const subjs=getSubjs();
+  const sorted=[...data].sort((a,b)=>b.overall-a.overall);
+  const subjCols=subjs.map(s=>`<th>${s.label}</th>`).join('');
+  const rows=sorted.map(r=>{
+    const subjTds=subjs.map(s=>{
+      const sr=r.subjectResults?.[s.id];
+      if(!sr||sr.score===null) return '<td style="color:var(--muted)">AB</td>';
+      const pct=s.totalMax?sr.score/s.totalMax:0;
+      return `<td style="color:${scoreClr(pct)}">${sr.score}<span style="font-size:.7rem;color:var(--muted)">/${s.totalMax}</span></td>`;
+    }).join('');
+    return `<tr>
+      <td style="font-weight:600;white-space:nowrap">${r.name}</td>
+      <td>${r.section}</td><td>${r.prelim}</td>
+      <td style="color:${scoreClr(r.pct)};font-weight:600">${r.overall}<span style="font-size:.7rem;color:var(--muted)">/${r.TOTAL_MAX}</span></td>
+      <td>${fmtPct(r.pct)}</td>
+      ${subjTds}
+      <td>${pfBadge(r.passOverall)}</td><td>${bktBadge(r.bucket)}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="panel"><div class="panel-title">All Students</div>
+    <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center">
+      <input type="text" id="stu-search" placeholder="Search by name…" oninput="filtST(this.value)"
+        style="padding:6px 12px;border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.82rem;background:var(--surface);color:var(--text);outline:none;width:220px">
+    </div>
+    <div class="tw" id="stu-table"><table><thead><tr>
+      <th>Name</th><th>Sec</th><th>P</th><th>Total</th><th>%</th>
+      ${subjCols}<th>Pass</th><th>Bucket</th>
+    </tr></thead><tbody id="stu-tbody">${rows}</tbody></table></div></div>`;
+}
+function filtST(q){
+  const q2=q.toLowerCase();
+  document.querySelectorAll('#stu-tbody tr').forEach(tr=>{
+    tr.style.display=tr.cells[0]?.textContent.toLowerCase().includes(q2)?'':'none';
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// TAB: SUBJECTS
+// ═══════════════════════════════════════════════════════════
+function tabSubjects(data){
+  const subjs=getSubjs();
+  const rows=subjs.map(s=>{
+    const sr=data.map(r=>r.subjectResults?.[s.id]).filter(Boolean);
+    const absCnt=sr.filter(r=>r.score===null).length;
+    const pres=sr.filter(r=>r.score!==null);
+    const passCnt=pres.filter(r=>r.pass===true).length;
+    const passRate=pres.length?passCnt/pres.length:0;
+    const vals=pres.map(r=>r.score).filter(v=>v!==null).sort((a,b)=>a-b);
+    const avg=vals.length?fmtAvg(vals):null;
+    const med=vals.length?vals[Math.floor(vals.length/2)]:null;
+    return `<tr>
+      <td style="font-weight:600">${s.label}</td>
+      <td>${s.cols.join(' + ')}</td>
+      <td>${s.totalMax}</td>
+      <td style="color:${passRate>=.7?'var(--green)':passRate>=.5?'var(--amber)':'var(--red)'};font-weight:600">${fmtPct(passRate)}</td>
+      <td>${avg!==null?avg.toFixed(1):'—'}</td>
+      <td>${med!==null?med:'—'}</td>
+      <td style="color:var(--muted)">${absCnt}</td>
+      <td style="min-width:120px">${mkPbar(passRate,passRate>=.7?'var(--green)':passRate>=.5?'var(--amber)':'var(--red)')}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="panel"><div class="panel-title">Subject Performance</div>
+    <div class="tw"><table><thead><tr>
+      <th>Subject</th><th>Columns</th><th>Max</th><th>Pass%</th><th>Avg</th><th>Median</th><th>Absent</th><th>Pass Bar</th>
+    </tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// TAB: AT-RISK (with subject filter)
+// ═══════════════════════════════════════════════════════════
+const INTERNAL_MARKS = 18;
+
+function getSubjsFailingWithInternals(student) {
+  return getSubjs().filter(s => {
+    const sr = student.subjectResults?.[s.id];
+    if(!sr||sr.score===null) return false;
+    // fail with internals if (score + 18) / (totalMax + 18) < 35%
+    // Simplified: assume internals add to a /100 total
+    // per the original logic: (score + 18) / 100 < 0.35 → score < 17
+    // More accurately: check proportionally against (totalMax + 18)
+    return (sr.score + INTERNAL_MARKS) / (s.totalMax + INTERNAL_MARKS) < 0.35;
+  }).map(s=>s.id);
+}
+
+function getPredictedSubj(student, subjId) {
+  const ents=G.all.filter(s=>String(s.rollNo)===String(student.rollNo)&&s.section===student.section&&s.name===student.name)
+    .sort((a,b)=>a.prelim-b.prelim);
+  if(ents.length<2) return null;
+  const scores=ents.map(e=>subjId==='OVERALL'?e.overall:(e.subjectResults?.[subjId]?.score??null)).filter(v=>v!==null);
+  if(scores.length<2) return null;
+  const growths=scores.slice(1).map((v,i)=>v-scores[i]);
+  const vg=growths.filter(g=>!isNaN(g));
+  if(!vg.length) return null;
+  return Math.round(fmtAvg(scores)+fmtAvg(vg));
+}
+
+function getPredictedFail(student) {
+  const subjs=getSubjs();
+  const predFails=subjs.filter(s=>{
+    const pred=getPredictedSubj(student,s.id);
+    return pred!==null&&pred<s.passThresh;
+  }).map(s=>s.id);
+  const predOverall=getPredictedSubj(student,'OVERALL');
+  return {predFails,predOverall};
+}
+
+function tabAtRisk(data){
+  const uniq=uniqueLatest(data);
+  const subjs=getSubjs();
+  const subjIds=['OVERALL',...subjs.map(s=>s.id)];
+  const subjLabels={OVERALL:'Overall',...Object.fromEntries(subjs.map(s=>[s.id,s.label]))};
+
+  const allFailing=uniq.filter(s=>s.passOverall==='FAIL').sort((a,b)=>b.noFail-a.noFail);
+  const allHighAbs=uniq.filter(s=>s.absCnt>3).sort((a,b)=>b.absCnt-a.absCnt);
+  const allPredFail=uniq.map(s=>{const {predFails,predOverall}=getPredictedFail(s);return predFails.length>=2?{...s,predFails,predOverall}:null;}).filter(Boolean).sort((a,b)=>b.predFails.length-a.predFails.length);
+  const allFailInt=uniq.map(s=>{const badSubjs=getSubjsFailingWithInternals(s);return badSubjs.length?{...s,badSubjs}:null;}).filter(Boolean).sort((a,b)=>b.badSubjs.length-a.badSubjs.length);
+  window._arCache={allFailing,allHighAbs,allPredFail,allFailInt,subjLabels};
+
+  return `
+  <div class="stat-grid">
+    <div class="stat-card red"><div class="stat-num">${allFailInt.length}</div><div class="stat-label">🚨 Fail Even With Internals</div></div>
+    <div class="stat-card red"><div class="stat-num">${allFailing.length}</div><div class="stat-label">Currently Failing</div></div>
+    <div class="stat-card amber"><div class="stat-num">${allPredFail.length}</div><div class="stat-label">Predicted to Fail</div></div>
+    <div class="stat-card amber"><div class="stat-num">${allHighAbs.length}</div><div class="stat-label">High Absenteeism (>3)</div></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+    <span style="font-size:.79rem;color:var(--muted);font-weight:600">Filter by subject:</span>
+    <div class="sp" id="ar-pills">
+      ${subjIds.map((s,i)=>`<div class="sp-pill ${i===0?'active':''}" data-subj="${s}" onclick="arFilter(this)">${subjLabels[s]||s}</div>`).join('')}
+    </div>
+  </div>
+  <div id="ar-body"></div>`;
+}
+
+function arFilter(el){
+  document.querySelectorAll('#ar-pills .sp-pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active'); arRender(el.dataset.subj);
+}
+
+function arRender(subj){
+  const {allFailing,allHighAbs,allPredFail,allFailInt,subjLabels}=window._arCache||{};
+  if(!allFailing) return;
+  const isSub=subj!=='OVERALL';
+  const lbl=isSub?` — ${subjLabels[subj]||subj}`:'';
+  const failing  =isSub?allFailing.filter(r=>r.failing.includes(subj)):allFailing;
+  const predFail =isSub?allPredFail.filter(r=>r.predFails.includes(subj)):allPredFail;
+  const failInt  =isSub?allFailInt.filter(r=>r.badSubjs.includes(subj)):allFailInt;
+  const highAbs  =isSub?allHighAbs.filter(r=>r.subjectResults?.[subj]?.score===null):allHighAbs;
+
+  const mkT=(rows,cols)=>!rows.length
+    ?'<div class="empty"><div class="empty-icon">✅</div><p>None found.</p></div>'
+    :`<div class="tw"><table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+
+  document.getElementById('ar-body').innerHTML=`
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-title">🚨 Critical — Fail Even With Internals${lbl}</div>
+    <p style="font-size:.79rem;color:var(--muted);margin-bottom:12px">Score so low that adding ${INTERNAL_MARKS} internal marks still won't reach 35%.</p>
+    ${mkT(failInt.slice(0,50).map(r=>`<tr>
+      <td style="font-weight:600;white-space:nowrap">${r.name}</td><td>${r.section}</td><td>${r.prelim}</td>
+      <td style="color:${scoreClr(r.pct)}">${fmtPct(r.pct)}</td>
+      <td style="font-size:.78rem;color:var(--red);font-weight:600">${r.badSubjs.map(id=>subjLabels[id]||id).join(', ')}</td>
+      <td>${r.badSubjs.length}</td><td>${bktBadge(r.bucket)}</td>
+    </tr>`).join(''),['Name','Sec','P','Score%','Critical Subjects','#','Bucket'])}
+  </div>
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-title">⚠️ Currently Failing${lbl}</div>
+    ${mkT(failing.slice(0,50).map(r=>`<tr>
+      <td style="font-weight:600;white-space:nowrap">${r.name}</td><td>${r.section}</td><td>${r.prelim}</td>
+      <td style="color:var(--red)">${fmtPct(r.pct)}</td>
+      <td style="font-size:.78rem;color:var(--muted)">${r.failing.map(id=>subjLabels[id]||id).join(', ')||'—'}</td>
+      <td><span class="badge b-lor">${r.noFail}</span></td>
+      <td style="color:${r.absCnt>2?'var(--red)':r.absCnt>0?'var(--amber)':'var(--muted)'}">${r.absCnt}</td>
+      <td>${bktBadge(r.bucket)}</td>
+    </tr>`).join(''),['Name','Sec','P','Score%','Failing Subjects','#Fails','Abs','Bucket'])}
+  </div>
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-title">📉 Predicted to Fail Next ${G.schema?.examLabel||'Prelim'}${lbl}</div>
+    <p style="font-size:.79rem;color:var(--muted);margin-bottom:12px">Predicted to fail 2+ subjects based on avg score + avg growth trend.</p>
+    ${predFail.length===0
+      ?'<div class="empty"><div class="empty-icon">✅</div><p>No students predicted to fail.</p></div>'
+      :mkT(predFail.slice(0,50).map(r=>`<tr>
+          <td style="font-weight:600;white-space:nowrap">${r.name}</td><td>${r.section}</td><td>${r.prelim}</td>
+          <td style="color:${scoreClr(r.pct)}">${fmtPct(r.pct)}</td>
+          <td>${pfBadge(r.passOverall)}</td>
+          <td style="font-size:.78rem;color:var(--red)">${r.predFails.map(id=>subjLabels[id]||id).join(', ')}</td>
+          <td style="font-family:'DM Mono',monospace;font-size:.78rem;color:var(--red);font-weight:600">${r.predOverall??'—'}</td>
+          <td>${bktBadge(r.bucket)}</td>
+        </tr>`).join(''),['Name','Sec','P','Current%','Now','Pred Fail Subjects','Pred Overall','Bucket'])
+    }
+  </div>
+  <div class="panel">
+    <div class="panel-title">📅 ${isSub?`Absent in ${subjLabels[subj]||subj}`:'High Absenteeism (>3 sessions)'}</div>
+    ${mkT(highAbs.slice(0,50).map(r=>`<tr>
+      <td style="font-weight:600">${r.name}</td><td>${r.section}</td><td>${r.prelim}</td>
+      <td style="color:var(--red);font-weight:700">${r.absCnt}</td>
+      <td>${pfBadge(r.passOverall)}</td>
+      <td style="color:${scoreClr(r.pct)}">${fmtPct(r.pct)}</td>
+    </tr>`).join(''),['Name','Sec','P','Absences','Pass/Fail','Score%'])}
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// TAB: GROWTH
+// ═══════════════════════════════════════════════════════════
+function tabGrowth(data){
+  const subjs=getSubjs();
+  const prelims=[...new Set(G.all.map(s=>s.prelim))].sort((a,b)=>a-b);
+  const examLabel=G.schema?.examLabel||'Prelim';
+  if(prelims.length<2) return `<div class="empty" style="margin-top:60px"><div class="empty-icon">📉</div><p>Upload at least 2 ${examLabel}s to see growth trends.</p></div>`;
+  const pills=['OVERALL',...subjs.map(s=>s.id)];
+  const pillLabels={OVERALL:'Overall',...Object.fromEntries(subjs.map(s=>[s.id,s.label]))};
+  return `
+  <div class="sp" style="margin-bottom:16px">
+    ${pills.map((s,i)=>`<div class="sp-pill ${i===0?'active':''}" data-subj="${s}" onclick="switchGS(this)">${pillLabels[s]||s}</div>`).join('')}
+  </div>
+  <div class="sec-grid">
+    <div class="panel" style="grid-column:1/-1"><div class="panel-title" id="growth-chart-title">Average Growth Between ${examLabel}s — Overall</div><div style="height:230px"><canvas id="ch-growth"></canvas></div></div>
+    <div class="panel" style="grid-column:1/-1"><div class="panel-title">Student Growth Table</div><div id="gtbl-wrap">${buildGrowthTable(data,'OVERALL')}</div></div>
+  </div>`;
+}
+
+function buildGrowthTable(data,subj){
+  const prelims=[...new Set(G.all.map(s=>s.prelim))].sort((a,b)=>a-b);
+  const keys=[...new Set(G.all.map(s=>`${s.rollNo}|||${s.section}`))];
+  const filtNames=new Set(data.map(s=>s.name));
+  const subjs=getSubjs();
+  const subjLabels={OVERALL:'Overall',...Object.fromEntries(subjs.map(s=>[s.id,s.label]))};
+  const subjObj=subjs.find(s=>s.id===subj);
+  const passThresh=subjObj?subjObj.passThresh:null;
+
+  const rows=keys.map(k=>{
+    const [rn,sec]=k.split('|||');
+    const ents=G.all.filter(s=>String(s.rollNo)===rn&&s.section===sec).sort((a,b)=>a.prelim-b.prelim);
+    if(!ents.length||!filtNames.has(ents[0].name)) return null;
+    const scores=prelims.map(p=>{ const e=ents.find(s=>s.prelim===p); if(!e) return null; return subj==='OVERALL'?e.overall:(e.subjectResults?.[subj]?.score??null); });
+    const growths=prelims.slice(1).map((p,i)=>{ const a=scores[i],b=scores[i+1]; return (a!==null&&b!==null)?b-a:null; });
+    const vg=growths.filter(g=>g!==null);
+    const avgG=vg.length?fmtAvg(vg):null;
+    const vs=scores.filter(s=>s!==null);
+    const avgScore=vs.length?fmtAvg(vs):null;
+    const predScore=(avgScore!==null&&avgG!==null)?Math.round(avgScore+avgG):null;
+    const predPass=predScore!==null&&passThresh!==null?(predScore>=passThresh?'PASS':'FAIL'):null;
+    return {name:ents[0].name,sec,scores,growths,avgG,avgScore,predScore,predPass};
+  }).filter(Boolean);
+
+  const pHdrs=prelims.map(p=>`<th>P${p}</th>`).join('');
+  const gHdrs=prelims.slice(1).map((p,i)=>`<th>G${i+1}</th>`).join('');
+  const examLabel=G.schema?.examLabel||'P';
+
+  return `<div class="tw"><table><thead><tr>
+    <th>Name</th><th>Sec</th>${prelims.map(p=>`<th>${examLabel[0]}${p}</th>`).join('')}
+    ${prelims.slice(1).map((_,i)=>`<th>↑${i+1}</th>`).join('')}
+    <th>Avg Growth</th><th>Predicted</th><th>Trend</th>
+  </tr></thead><tbody>
+  ${rows.map(r=>`<tr>
+    <td style="font-weight:600;white-space:nowrap">${r.name}</td><td>${r.sec}</td>
+    ${r.scores.map(s=>s!==null?`<td>${s}</td>`:'<td style="color:var(--muted)">—</td>').join('')}
+    ${r.growths.map(g=>g!==null?`<td>${growArr(g)}</td>`:'<td style="color:var(--muted)">—</td>').join('')}
+    <td>${r.avgG!==null?growArr(r.avgG):'—'}</td>
+    <td style="font-weight:600;color:${r.predScore!==null?(r.predPass==='PASS'?'var(--green)':'var(--red)'):'var(--muted)'}">${r.predScore??'—'}</td>
+    <td>${r.predPass?pfBadge(r.predPass):'—'}</td>
+  </tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+function switchGS(el){
+  document.querySelectorAll('.sp-pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  const subj=el.dataset.subj;
+  const subjs=getSubjs();
+  const subjLabels={OVERALL:'Overall',...Object.fromEntries(subjs.map(s=>[s.id,s.label]))};
+  const examLabel=G.schema?.examLabel||'Prelim';
+  document.getElementById('growth-chart-title').textContent=`Average Growth Between ${examLabel}s — ${subjLabels[subj]||subj}`;
+  const w=document.getElementById('gtbl-wrap'); if(w) w.innerHTML=buildGrowthTable(getFilt(),subj);
+  renderGrowthChart(getFilt(),subj);
+}
+
+function renderGrowthChart(data,subj){
+  subj=subj||'OVERALL';
+  const prelims=[...new Set(G.all.map(s=>s.prelim))].sort((a,b)=>a-b);
+  if(prelims.length<2) return;
+  const sections=[...new Set(data.map(s=>s.section).filter(s=>s&&s!=='—'))].sort();
+  const hasSec=sections.length>1;
+  const c=document.getElementById('ch-growth'); if(!c) return;
+  const labels=prelims.slice(1).map((p,i)=>`P${prelims[i]}→P${p}`);
+  const avgGrowth=(sec)=>prelims.slice(1).map((p,i)=>{
+    const d=data.filter(s=>(!hasSec||s.section===sec));
+    const prev=d.filter(s=>s.prelim===prelims[i]).map(s=>subj==='OVERALL'?s.overall:(s.subjectResults?.[subj]?.score??null)).filter(v=>v!==null);
+    const curr=d.filter(s=>s.prelim===p).map(s=>subj==='OVERALL'?s.overall:(s.subjectResults?.[subj]?.score??null)).filter(v=>v!==null);
+    return prev.length&&curr.length?+(fmtAvg(curr)-fmtAvg(prev)).toFixed(1):null;
+  });
+  const COLORS=['rgba(59,111,206,.7)','rgba(124,92,191,.7)','rgba(62,207,142,.7)'];
+  const datasets=hasSec?sections.map((s,i)=>({label:`Sec ${s}`,data:avgGrowth(s),backgroundColor:COLORS[i]||COLORS[0],borderRadius:4}))
+    :[{label:'Avg Growth',data:avgGrowth(null),backgroundColor:'rgba(59,111,206,.7)',borderRadius:4}];
+  new Chart(c,{type:'bar',data:{labels,datasets},
+    options:{...cdOpts(),plugins:{legend:{display:hasSec,labels:{color:'#6b7694',font:{family:'Plus Jakarta Sans',size:11}}}},
+      scales:{x:{ticks:{color:'#8892b0'},grid:{color:'#e8ecf6'}},y:{ticks:{color:'#8892b0',callback:v=>v>0?'+'+v:v},grid:{color:'#e8ecf6'}}}}});
+}
+
+// ═══════════════════════════════════════════════════════════
+// TAB: KMEANS
+// ═══════════════════════════════════════════════════════════
+function tabKmeans(data){
+  const subjs=getSubjs();
+  if(!data.length) return '<div class="empty"><div class="empty-icon">🔬</div><p>No data.</p></div>';
+  return `
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-title">K-Means Clustering</div>
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap">
+      <label style="font-size:.82rem;color:var(--muted)">Clusters (k): <strong id="k-val">3</strong></label>
+      <input type="range" id="k-slider" min="2" max="6" value="3" oninput="document.getElementById('k-val').textContent=this.value;runKmeans(getFilt())"
+        style="width:120px;accent-color:var(--accent)">
+    </div>
+    <div id="km-out"></div>
+  </div>`;
+}
+
+function runKmeans(data){
+  const k=+(document.getElementById('k-slider')?.value||3);
+  const subjs=getSubjs();
+  const pts=data.filter(s=>s.absCnt===0).map(s=>({
+    name:s.name, sec:s.section, prelim:s.prelim, pass:s.passOverall,
+    scores:subjs.map(sub=>s.subjectResults?.[sub.id]?.score??0),
+    overall:s.overall, pct:s.pct
+  }));
+  if(pts.length<k){ document.getElementById('km-out').innerHTML='<p style="color:var(--muted);font-size:.83rem;">Not enough students for this k value.</p>'; return; }
+  const result=kmeansRun(pts.map(p=>p.scores),k);
+  const clusters=Array.from({length:k},(_,i)=>pts.filter((_,j)=>result.assignments[j]===i));
+  clusters.sort((a,b)=>fmtAvg(b.map(s=>s.overall))-fmtAvg(a.map(s=>s.overall)));
+  const labels=['🥇 High','🥈 Mid-High','🥉 Mid','⚠ Low','🔴 Critical','🟣 Group 6'];
+  const colors=['var(--green)','var(--accent)','var(--amber)','var(--red)','#c0392b','var(--accent2)'];
+  document.getElementById('km-out').innerHTML=clusters.map((cl,i)=>{
+    const avg=fmtAvg(cl.map(s=>s.overall));
+    const subjs2=getSubjs();
+    const subjAvgs=subjs2.map(s=>{ const vals=cl.map(p=>p.scores[subjs2.indexOf(s)]); return `${s.label}: ${fmtAvg(vals).toFixed(1)}`; }).join(' | ');
+    return `<div style="margin-bottom:12px;padding:14px 16px;background:var(--surface2);border-radius:10px;border-left:4px solid ${colors[i]}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong style="color:${colors[i]}">${labels[i]} Performers</strong>
+        <span style="font-size:.78rem;color:var(--muted)">${cl.length} students · Avg overall: ${avg.toFixed(1)}</span>
+      </div>
+      <div style="font-size:.75rem;color:var(--muted);margin-bottom:8px">${subjAvgs}</div>
+      <div style="font-size:.79rem">${cl.slice(0,8).map(s=>`<span style="display:inline-block;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:2px 8px;margin:2px;font-size:.76rem">${s.name}</span>`).join('')}${cl.length>8?`<span style="color:var(--muted);font-size:.75rem"> +${cl.length-8} more</span>`:''}</div>
+    </div>`;
+  }).join('');
+}
+
+function kmeansRun(data,k,iter=100){
+  let centers=data.slice().sort(()=>Math.random()-.5).slice(0,k);
+  let assignments=new Array(data.length).fill(0);
+  for(let it=0;it<iter;it++){
+    assignments=data.map(p=>{ let bi=0,bd=Infinity; centers.forEach((c,i)=>{ const d=p.reduce((s,v,j)=>s+(v-c[j])**2,0); if(d<bd){bd=d;bi=i;} }); return bi; });
+    const nc=centers.map((_,i)=>{ const pts=data.filter((_,j)=>assignments[j]===i); return pts.length?pts[0].map((_,d)=>fmtAvg(pts.map(p=>p[d]))):centers[i]; });
+    if(JSON.stringify(nc)===JSON.stringify(centers)) break;
+    centers=nc;
+  }
+  return {assignments};
+}
+
+// ═══════════════════════════════════════════════════════════
+// TAB: ACTION PLAN
+// ═══════════════════════════════════════════════════════════
+function tabPlan(data){
+  const uniq=uniqueLatest(data);
+  const subjs=getSubjs();
+  const examLabel=G.schema?.examLabel||'Prelim';
+  if(!uniq.length) return '<div class="empty"><div class="empty-icon">📋</div><p>No data.</p></div>';
+
+  const failing=uniq.filter(s=>s.passOverall==='FAIL');
+  const deepFail=failing.filter(s=>s.noFail>=2);
+  const absent=uniq.filter(s=>s.absCnt>0);
+  const failInt=uniq.map(s=>{const b=getSubjsFailingWithInternals(s);return b.length?{...s,badSubjs:b}:null;}).filter(Boolean);
+
+  const recs=[];
+
+  if(deepFail.length){
+    recs.push({type:'danger',title:`${deepFail.length} students failing 2+ subjects`,
+      body:`These students need immediate intervention: ${deepFail.slice(0,5).map(s=>s.name).join(', ')}${deepFail.length>5?` +${deepFail.length-5} more`:''}.`});
+  }
+  if(failInt.length){
+    recs.push({type:'danger',title:`${failInt.length} students critical even with internals`,
+      body:`Even adding ${INTERNAL_MARKS} internal marks won't save them. Prioritise remedial classes.`});
+  }
+
+  // Subject-wise weak areas
+  subjs.forEach(s=>{
+    const pres=uniq.filter(r=>r.subjectResults?.[s.id]?.score!==null);
+    const passCnt=pres.filter(r=>r.subjectResults?.[s.id]?.pass===true).length;
+    const passRate=pres.length?passCnt/pres.length:1;
+    if(passRate<0.6){
+      recs.push({type:'warn',title:`${s.label} pass rate is low (${fmtPct(passRate)})`,
+        body:`${pres.length-passCnt} of ${pres.length} students are failing ${s.label}. Consider targeted revision sessions.`});
+    }
+  });
+
+  if(absent.length){
+    recs.push({type:'warn',title:`${absent.length} students have absences recorded`,
+      body:`Absentees are at higher risk. Follow up with: ${absent.slice(0,4).map(s=>s.name).join(', ')}${absent.length>4?` +${absent.length-4} more`:''}.`});
+  }
+
+  const highPerf=uniq.filter(s=>s.pct>=0.75);
+  if(highPerf.length){
+    recs.push({type:'info',title:`${highPerf.length} high-performing students (≥75%)`,
+      body:`Consider enrichment activities or peer-tutoring roles for top performers.`});
+  }
+
+  const recHtml=recs.length?recs.map(r=>`<div class="rec ${r.type==='danger'?'danger':r.type==='warn'?'warn':''}">
+    <strong>${r.title}</strong>${r.body}</div>`).join('')
+    :'<div class="rec"><strong>All clear!</strong>No significant concerns detected in the current filtered data.</div>';
+
+  return `
+  <div class="panel">
+    <div class="panel-title">📋 Action Plan — ${examLabel} ${[...new Set(data.map(s=>s.prelim))].sort().join(', ')}</div>
+    ${recHtml}
+    <div style="margin-top:16px;font-size:.78rem;color:var(--muted)">Based on ${uniq.length} students in the current filter.</div>
+  </div>
+  <div class="panel" style="margin-top:16px">
+    <div class="panel-title">Students Needing Immediate Attention</div>
+    <div class="tw"><table><thead><tr><th>Name</th><th>Sec</th><th>Score%</th><th>Failing Subjects</th><th>#Fails</th><th>Abs</th></tr></thead><tbody>
+    ${failing.slice(0,30).map(r=>`<tr>
+      <td style="font-weight:600">${r.name}</td><td>${r.section}</td>
+      <td style="color:var(--red)">${fmtPct(r.pct)}</td>
+      <td style="font-size:.78rem">${r.failing.map(id=>{const s=subjs.find(x=>x.id===id);return s?s.label:id;}).join(', ')||'—'}</td>
+      <td><span class="badge b-lor">${r.noFail}</span></td>
+      <td style="color:${r.absCnt>0?'var(--amber)':'var(--muted)'}">${r.absCnt}</td>
+    </tr>`).join('')}
+    </tbody></table></div>
+    ${failing.length===0?'<div class="empty"><div class="empty-icon">✅</div><p>No failing students.</p></div>':''}
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// AFTER RENDER (charts)
+// ═══════════════════════════════════════════════════════════
+function afterRender(tab,data){
+  if(tab==='overview'){
+    const prelims=[...new Set(data.map(s=>s.prelim))].sort((a,b)=>a-b);
+    const sections=[...new Set(data.map(s=>s.section).filter(s=>s&&s!=='—'))].sort();
+    const examLabel=G.schema?.examLabel||'Prelim';
+    const c1=document.getElementById('ch-pass');
+    if(c1){
+      const hasSec=sections.length>1;
+      const COLORS=['rgba(59,111,206,.7)','rgba(124,92,191,.7)','rgba(62,207,142,.7)'];
+      const ds=hasSec?sections.map((sec,i)=>({label:`Sec ${sec}`,
+        data:prelims.map(p=>{ const r=data.filter(s=>s.prelim===p&&s.section===sec); return r.length?+(r.filter(s=>s.passOverall==='PASS').length/r.length*100).toFixed(1):null; }),
+        backgroundColor:COLORS[i]||COLORS[0]}))
+        :[{label:'Pass%',data:prelims.map(p=>{ const r=data.filter(s=>s.prelim===p); return r.length?+(r.filter(s=>s.passOverall==='PASS').length/r.length*100).toFixed(1):null; }),backgroundColor:'rgba(59,111,206,.7)',borderRadius:5}];
+      new Chart(c1,{type:'bar',data:{labels:prelims.map(p=>`${examLabel[0]}${p}`),datasets:ds},
+        options:{...cdOpts(),plugins:{legend:{display:hasSec,labels:{color:'#6b7694',font:{family:'Plus Jakarta Sans',size:11}}}},
+          scales:{x:{ticks:{color:'#8892b0'},grid:{color:'#e8ecf6'}},y:{min:0,max:100,ticks:{color:'#8892b0',callback:v=>v+'%'},grid:{color:'#e8ecf6'}}}}});
+    }
+    const c2=document.getElementById('ch-dist');
+    if(c2){
+      const buckets=['LOR','LOWER MOR','UPPER MOR','HOR','ABS'];
+      const labels=['LOR','Lower MOR','Upper MOR','HOR','Absent'];
+      const bColors=['rgba(214,63,63,.7)','rgba(197,151,14,.7)','rgba(124,92,191,.7)','rgba(59,111,206,.7)','rgba(107,118,148,.5)'];
+      const uniq=uniqueLatest(data);
+      new Chart(c2,{type:'doughnut',data:{labels,datasets:[{data:buckets.map(b=>uniq.filter(s=>s.bucket===b).length),backgroundColor:bColors,borderWidth:2,borderColor:'#fff'}]},
+        options:{maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#6b7694',font:{family:'Plus Jakarta Sans',size:11},boxWidth:12}}}}});
+    }
+  }
+  if(tab==='atrisk') setTimeout(()=>arRender('OVERALL'),0);
+  if(tab==='growth') renderGrowthChart(data,'OVERALL');
+  if(tab==='kmeans') setTimeout(()=>runKmeans(getFilt()),0);
+}
+
+// ═══════════════════════════════════════════════════════════
+// GOVERNMENT EXCEL EXPORT
+// Generates the Maharashtra govt format: रिझल्ट sheet + लिंक माहिती रेडी sheet
+// ═══════════════════════════════════════════════════════════
+function exportGovExcel() {
+  if(!G.all.length){ alert('No data loaded.'); return; }
+  const schema=G.schema;
+  const subjs=schema.subjects;
+  const examLabel=schema.examLabel||'Prelim';
+
+  // Ask which prelim to export
+  const prelims=[...new Set(G.all.map(s=>s.prelim))].sort((a,b)=>a-b);
+  const p=prelims.length>1?prompt(`Export which ${examLabel}?\n${prelims.map(p=>`${p}`).join(', ')}\n(Enter number, or leave blank for latest)`)?.trim():String(prelims[0]);
+  const targetPrelim=p?+p:prelims[prelims.length-1];
+  const students=G.all.filter(s=>s.prelim===targetPrelim).sort((a,b)=>a.rollNo-b.rollNo);
+  if(!students.length){ alert(`No data for ${examLabel} ${targetPrelim}`); return; }
+
+  const TOTAL_MAX=students[0]?.TOTAL_MAX||subjs.reduce((a,s)=>a+s.totalMax,0);
+  const wb=XLSX.utils.book_new();
+
+  // ── Sheet 1: रिझल्ट (Student data) ──────────────────────
+  // Build headers matching the govt format structure
+  const titleRow = [`${examLabel} ${targetPrelim} Result Sheet`];
+
+  // Map subjects to govt columns: split subjects get component columns + total; single subjects get one column
+  // Identify which subjects are split (multiple cols) vs single
+  const govSubjCols = []; // [{label, subjId, component: 'c1'|'c2'|'total'|'single', compIdx}]
+
+  subjs.forEach(s => {
+    if(s.cols.length > 1) {
+      s.cols.forEach((c,i) => govSubjCols.push({label:`${s.label}-${i+1} (out of ${s.maxPerCol})`, subjId:s.id, type:'component', compIdx:i}));
+      govSubjCols.push({label:`${s.label} Total (out of ${s.totalMax})`, subjId:s.id, type:'total'});
+    } else {
+      govSubjCols.push({label:`${s.label} (out of ${s.totalMax})`, subjId:s.id, type:'single'});
+    }
+  });
+
+  const headerRow = ['Sr No', 'Name Of Students', 'Boy/Girl',
+    ...govSubjCols.map(c=>c.label),
+    'Total Marks', 'Pass / Fail', '%'
+  ];
+
+  // Data rows
+  const dataRows = students.map((stu,idx) => {
+    const r = idx+3; // Excel row (1=title, 2=header, 3+=data)
+    const subjVals = govSubjCols.map(gc => {
+      const sr = stu.subjectResults?.[gc.subjId];
+      if(!sr) return null;
+      if(gc.type==='single') return sr.score??null;
+      if(gc.type==='component') return sr.rawVals?.[gc.compIdx]??null;
+      if(gc.type==='total') return null; // will use formula
+      return null;
+    });
+    return [idx+1, stu.name, stu.gender==='M'?'Boy':stu.gender==='F'?'Girl':'—', ...subjVals, null, null, null];
+  });
+
+  const aoa = [titleRow, headerRow, ...dataRows];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  // Add formulas for total cols, total marks, pass/fail, %
+  const colOffset = 4; // A=Sr, B=Name, C=Boy/Girl, D=first subj col (1-indexed = 4)
+  const nRows = students.length;
+
+  // Figure out which AoA columns are "total" cols
+  let colIdx = colOffset; // 1-based Excel col index for first subj col
+  const totalColIndices = {}; // subjId → excel col letter
+  const singleColIndices = {}; // subjId → excel col letter
+  const compColRanges = {}; // subjId → [start_letter, end_letter]
+
+  govSubjCols.forEach(gc => {
+    const letter = XLSX.utils.encode_col(colIdx-1); // 0-indexed for encode_col
+    if(gc.type==='total') {
+      totalColIndices[gc.subjId] = letter;
+    } else if(gc.type==='single') {
+      singleColIndices[gc.subjId] = letter;
+    } else if(gc.type==='component') {
+      if(!compColRanges[gc.subjId]) compColRanges[gc.subjId]={start:letter};
+      compColRanges[gc.subjId].end = letter;
+    }
+    colIdx++;
+  });
+
+  const totalMarksCol = XLSX.utils.encode_col(colIdx-1); colIdx++;
+  const passfailCol   = XLSX.utils.encode_col(colIdx-1); colIdx++;
+  const pctCol        = XLSX.utils.encode_col(colIdx-1);
+
+  // Write formulas for each student row
+  for(let i=0;i<nRows;i++){
+    const r=i+3; // Excel row
+
+    // Totals for split subjects
+    Object.entries(compColRanges).forEach(([sid,range])=>{
+      const tcol=totalColIndices[sid];
+      if(tcol) ws[`${tcol}${r}`]={t:'n',f:`SUM(${range.start}${r}:${range.end}${r})`};
+    });
+
+    // Total marks = sum of all subject total/single cols
+    const sumParts=subjs.map(s=>{
+      if(totalColIndices[s.id]) return `${totalColIndices[s.id]}${r}`;
+      if(singleColIndices[s.id]) return `${singleColIndices[s.id]}${r}`;
+      return null;
+    }).filter(Boolean);
+    if(sumParts.length) ws[`${totalMarksCol}${r}`]={t:'n',f:sumParts.join('+')};
+
+    // Pass/Fail
+    const passConds=subjs.map(s=>{
+      const t=s.passThresh;
+      if(totalColIndices[s.id]) return `${totalColIndices[s.id]}${r}>=${t}`;
+      if(singleColIndices[s.id]) return `${singleColIndices[s.id]}${r}>=${t}`;
+      return null;
+    }).filter(Boolean);
+    if(passConds.length) ws[`${passfailCol}${r}`]={t:'s',f:`IF(AND(${passConds.join(',')}),"Pass","Fail")`};
+
+    // Percentage
+    ws[`${pctCol}${r}`]={t:'n',f:`ROUND(${totalMarksCol}${r}/${TOTAL_MAX}*100,1)`};
+  }
+
+  // Summary stats row (first data row gets summary formulas, rest are blank — matching govt format)
+  const R3=3; // first data row
+  const lastDataRow=2+nRows;
+
+  // Right-side summary block (stats like govt sheet)
+  const statsStartCol=colIdx+2;
+  const SC=i=>XLSX.utils.encode_col(statsStartCol+i-1);
+
+  // Boys/Girls counts
+  ws[`${SC(1)}2`]={t:'s',v:'No of Boys'};
+  ws[`${SC(2)}2`]={t:'s',v:'No of Girls'};
+  ws[`${SC(3)}2`]={t:'s',v:'Passed Boys'};
+  ws[`${SC(4)}2`]={t:'s',v:'Passed Girls'};
+  ws[`${SC(5)}2`]={t:'s',v:'Total Students'};
+  ws[`${SC(6)}2`]={t:'s',v:'Total Passed'};
+  ws[`${SC(7)}2`]={t:'s',v:'Pass%'};
+
+  const CR=`C${R3}:C${lastDataRow}`, QR=`${passfailCol}${R3}:${passfailCol}${lastDataRow}`;
+  ws[`${SC(1)}${R3}`]={t:'n',f:`COUNTIF(${CR},"Boy")`};
+  ws[`${SC(2)}${R3}`]={t:'n',f:`COUNTIF(${CR},"Girl")`};
+  ws[`${SC(3)}${R3}`]={t:'n',f:`COUNTIFS(${QR},"pass",${CR},"Boy")`};
+  ws[`${SC(4)}${R3}`]={t:'n',f:`COUNTIFS(${QR},"pass",${CR},"Girl")`};
+  ws[`${SC(5)}${R3}`]={t:'n',f:`${SC(1)}${R3}+${SC(2)}${R3}`};
+  ws[`${SC(6)}${R3}`]={t:'n',f:`${SC(3)}${R3}+${SC(4)}${R3}`};
+  ws[`${SC(7)}${R3}`]={t:'n',f:`ROUND(${SC(6)}${R3}/${SC(5)}${R3}*100,1)`};
+
+  // Score distribution
+  const PR=`${pctCol}${R3}:${pctCol}${lastDataRow}`;
+  const distLabels=['100','90 to 99','80 to 89','70 to 79','60 to 69','35 to 59','Below 35'];
+  const distFormulas=[
+    `COUNTIF(${PR},100)`,
+    `COUNTIFS(${PR},">=90",${PR},"<=99")`,
+    `COUNTIFS(${PR},">=80",${PR},"<=89")`,
+    `COUNTIFS(${PR},">=70",${PR},"<=79")`,
+    `COUNTIFS(${PR},">=60",${PR},"<=69")`,
+    `COUNTIFS(${PR},">=35",${PR},"<=59")`,
+    `COUNTIF(${PR},"<35")`
+  ];
+  distLabels.forEach((l,i)=>{
+    ws[`${SC(1)}${R3+2+i}`]={t:'s',v:l};
+    ws[`${SC(2)}${R3+2+i}`]={t:'n',f:distFormulas[i]};
+  });
+
+  // Subject pass% stats
+  let statsRow=R3+12;
+  ws[`${SC(1)}${statsRow}`]={t:'s',v:'Subject Pass% Summary'};
+  statsRow++;
+  subjs.forEach(s=>{
+    const col=totalColIndices[s.id]||singleColIndices[s.id];
+    if(!col) return;
+    ws[`${SC(1)}${statsRow}`]={t:'s',v:`${s.label} Pass%`};
+    ws[`${SC(2)}${statsRow}`]={t:'n',f:`ROUND(COUNTIF(${col}${R3}:${col}${lastDataRow},">=${s.passThresh}")/${SC(5)}${R3}*100,1)`};
+    ws[`${SC(1)}${statsRow+1}`]={t:'s',v:`${s.label} Average`};
+    ws[`${SC(2)}${statsRow+1}`]={t:'n',f:`ROUND(AVERAGE(${col}${R3}:${col}${lastDataRow}),1)`};
+    statsRow+=2;
+  });
+
+  // Set column widths
+  ws['!cols']=[{wch:6},{wch:24},{wch:8},...govSubjCols.map(()=>({wch:14})),{wch:12},{wch:12},{wch:8}];
+  ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:lastDataRow+20,c:statsStartCol+8}});
+  XLSX.utils.book_append_sheet(wb, ws, 'रिझल्ट');
+
+  // ── Sheet 2: लिंक माहिती रेडी ─────────────────────────────
+  const link_ws = XLSX.utils.aoa_to_sheet([
+    ['लिंक माहिती', null],
+    [`इ 10 चे एकूण मुले`, {f:`रिझल्ट!${SC(1)}${R3}`}],
+    [`इ 10 चे एकूण मुली`, {f:`रिझल्ट!${SC(2)}${R3}`}],
+    [`इ 10 चे एकूण विद्यार्थी`, {f:`रिझल्ट!${SC(5)}${R3}`}],
+    [`परीक्षेला बसलेले मुले`, {f:`'लिंक माहिती रेडी'!$B$2`}],
+    [`परीक्षेला बसलेले मुली`, {f:`'लिंक माहिती रेडी'!$B$3`}],
+    [`परीक्षेला बसलेले एकूण विद्यार्थी`, {f:`'लिंक माहिती रेडी'!$B$4`}],
+    [`एकूण पास मुलांची संख्या`, {f:`रिझल्ट!${SC(3)}${R3}`}],
+    [`एकूण पास मुलींची संख्या`, {f:`रिझल्ट!${SC(4)}${R3}`}],
+    [`एकूण पास विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(6)}${R3}`}],
+    [`एकूण नापास मुलांची संख्या`, {f:`'लिंक माहिती रेडी'!$B$5-'लिंक माहिती रेडी'!$B$8`}],
+    [`एकूण नापास मुलींची संख्या`, {f:`'लिंक माहिती रेडी'!$B$6-'लिंक माहिती रेडी'!$B$9`}],
+    [`एकूण नापास विद्यार्थी संख्या`, {f:`'लिंक माहिती रेडी'!$B$7-'लिंक माहिती रेडी'!$B$10`}],
+    [`शाळेचा शेकडा निकाल`, {f:`रिझल्ट!${SC(7)}${R3}`}],
+    ...subjs.map(s=>[`${s.label} Pass%`, {f:`रिझल्ट!${SC(2)}${R3+2+subjs.indexOf(s)*2}`}]),
+    [`100% प्राप्त विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(2)}${R3+2}`}],
+    [`90 ते 99 % प्राप्त विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(2)}${R3+3}`}],
+    [`80 ते 89% प्राप्त विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(2)}${R3+4}`}],
+    [`70 ते 79% प्राप्त विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(2)}${R3+5}`}],
+    [`60 ते 69% प्राप्त विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(2)}${R3+6}`}],
+    [`59 ते 35% प्राप्त विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(2)}${R3+7}`}],
+    [`35% पेक्षा कमी प्राप्त विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(2)}${R3+8}`}],
+  ]);
+  link_ws['!cols']=[{wch:40},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, link_ws, 'लिंक माहिती रेडी');
+
+  // ── Sheet 3: Raw Data (for teacher's own analysis) ─────
+  const rawHdr=['Sr','Name','Gender','Section','Overall','Pass/Fail','%',...subjs.map(s=>s.label)];
+  const rawData=students.map((stu,i)=>[
+    i+1, stu.name,
+    stu.gender==='M'?'Boy':stu.gender==='F'?'Girl':'—',
+    stu.section, stu.overall, stu.passOverall, (stu.pct*100).toFixed(1),
+    ...subjs.map(s=>stu.subjectResults?.[s.id]?.score??'AB')
+  ]);
+  const raw_ws=XLSX.utils.aoa_to_sheet([rawHdr,...rawData]);
+  raw_ws['!cols']=[{wch:4},{wch:24},{wch:8},{wch:10},{wch:8},{wch:10},{wch:6},...subjs.map(()=>({wch:12}))];
+  XLSX.utils.book_append_sheet(wb, raw_ws, 'Raw Data');
+
+  const fname=`PrelimsIQ_${examLabel}${targetPrelim}_Export.xlsx`;
+  XLSX.writeFile(wb, fname);
+}
+</script>
+</body>
+</html>
