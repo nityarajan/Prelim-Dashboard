@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PrelimsIQ</title>
+<title>Examplified</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -166,8 +166,8 @@ tr:hover td{background:rgba(59,111,206,.04);}
 
 <!-- UPLOAD -->
 <div id="upload-screen">
-  <div class="logo">Prelims<span>IQ</span></div>
-  <div class="tagline">Teacher analytics dashboard for prelim exams</div>
+  <div class="logo">Exam<span>plified</span></div>
+  <div class="tagline">Teacher analytics dashboard for any exam</div>
   <div id="drop-zone">
     <div class="upload-icon">📊</div>
     <div class="upload-title">Upload your marks spreadsheet</div>
@@ -222,7 +222,7 @@ tr:hover td{background:rgba(59,111,206,.04);}
         <option value="F">Girls</option>
       </select>
     </div>
-    <button class="topbar-btn export-btn" onclick="exportGovExcel()">⬇ Export (Govt Format)</button>
+    <button class="topbar-btn export-btn" onclick="exportCalcSheet()">⬇ Export Calculations</button>
     <button class="topbar-btn" onclick="resetApp()">↑ New File</button>
   </div>
   <div class="nav-tabs" id="nav-tabs">
@@ -1294,12 +1294,22 @@ function tabGrowth(data){
   </div>
   <div class="sec-grid">
     <div class="panel" style="grid-column:1/-1"><div class="panel-title" id="growth-chart-title">Growth Between ${examLabel}s — Overall${isMixed?' (%)':''}</div><div style="height:230px"><canvas id="ch-growth"></canvas></div></div>
-    <div class="panel" style="grid-column:1/-1"><div class="panel-title">Student Growth Table</div><div id="gtbl-wrap">${buildGrowthTable(data,'OVERALL')}</div></div>
+    <div class="panel" style="grid-column:1/-1">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="panel-title" style="margin:0">Student Growth Table</div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--muted);cursor:pointer;user-select:none">
+          <input type="checkbox" id="pred-fail-only" onchange="togglePredFail(this)"
+            style="width:15px;height:15px;accent-color:var(--red);cursor:pointer">
+          <span>Show only <strong style="color:var(--red)">predicted to fail</strong></span>
+        </label>
+      </div>
+      <div id="gtbl-wrap">${buildGrowthTable(data,'OVERALL',false)}</div>
+    </div>
   </div>`;
 }
 
 
-function buildGrowthTable(data,subj){
+function buildGrowthTable(data,subj,predFailOnly){
   const prelims=getPrelimsSorted();
   const isMixed=schemaIsMixed();
   const keys=[...new Set(G.all.map(s=>`${s.rollNo}|||${s.section}`))];
@@ -1340,13 +1350,16 @@ function buildGrowthTable(data,subj){
     return {name:ents[0].name,sec,scores,growths,avgG,predVal,predPass};
   }).filter(Boolean);
 
+  const displayRows = predFailOnly ? rows.filter(r=>r.predPass==='FAIL') : rows;
+  if(predFailOnly && !displayRows.length) return '<div style="padding:24px;color:var(--muted);text-align:center">No students predicted to fail for this subject.</div>';
+
   return `<div class="tw"><table><thead><tr>
     <th>Name</th><th>Sec</th>
     ${prelims.map(p=>`<th>${p}${unit}</th>`).join('')}
     ${prelims.slice(1).map((_,i)=>`<th>↑${i+1}</th>`).join('')}
     <th>Avg Growth</th><th>Predicted</th><th>Trend</th>
   </tr></thead><tbody>
-  ${rows.map(r=>`<tr>
+  ${displayRows.map(r=>`<tr>
     <td style="font-weight:600;white-space:nowrap">${r.name}</td><td>${r.sec}</td>
     ${r.scores.map(s=>s!==null?`<td>${s}${unit}</td>`:`<td style="color:var(--muted)">—</td>`).join('')}
     ${r.growths.map(g=>g!==null?`<td>${growArr(g)}</td>`:`<td style="color:var(--muted)">—</td>`).join('')}
@@ -1366,8 +1379,15 @@ function switchGS(el){
   const subjLabels={OVERALL:'Overall',...Object.fromEntries(subjs.map(s=>[s.id,s.label]))};
   const examLabel=G.schema?.examLabel||'Prelim';
   document.getElementById('growth-chart-title').textContent=`Average Growth Between ${examLabel}s — ${subjLabels[subj]||subj}`;
-  const w=document.getElementById('gtbl-wrap'); if(w) w.innerHTML=buildGrowthTable(getFilt(),subj);
+  const predOnly=document.getElementById('pred-fail-only')?.checked||false;
+  const w=document.getElementById('gtbl-wrap'); if(w) w.innerHTML=buildGrowthTable(getFilt(),subj,predOnly);
   renderGrowthChart(getFilt(),subj);
+}
+
+function togglePredFail(cb){
+  const subj=document.querySelector('.sp-pill.active')?.dataset?.subj||'OVERALL';
+  const w=document.getElementById('gtbl-wrap');
+  if(w) w.innerHTML=buildGrowthTable(getFilt(),subj,cb.checked);
 }
 
 function renderGrowthChart(data,subj){
@@ -1650,223 +1670,232 @@ function afterRender(tab,data){
 // GOVERNMENT EXCEL EXPORT
 // Generates the Maharashtra govt format: रिझल्ट sheet + लिंक माहिती रेडी sheet
 // ═══════════════════════════════════════════════════════════
-function exportGovExcel() {
+function exportCalcSheet() {
   if(!G.all.length){ alert('No data loaded.'); return; }
-  const schema=G.schema;
-  const subjs=schema.subjects;
-  const examLabel=schema.examLabel||'Prelim';
+  const schema = G.schema;
+  const subjs  = schema.subjects;
+  const isMixed = schemaIsMixed();
+  const prelims = getPrelimsSorted();
 
-  // Ask which prelim to export
-  const prelims=[...new Set(G.all.map(s=>s.prelim))].sort((a,b)=>a-b);
-  const p=prelims.length>1?prompt(`Export which ${examLabel}?\n${prelims.map(p=>`${p}`).join(', ')}\n(Enter number, or leave blank for latest)`)?.trim():String(prelims[0]);
-  const targetPrelim=p?+p:prelims[prelims.length-1];
-  const students=G.all.filter(s=>s.prelim===targetPrelim).sort((a,b)=>a.rollNo-b.rollNo);
-  if(!students.length){ alert(`No data for ${examLabel} ${targetPrelim}`); return; }
+  // Ask which exam to export (or all)
+  const examLabel = schema.examLabel || 'Prelim';
+  const options   = ['ALL', ...prelims.map(String)];
+  const choice    = prompt(
+    `Export CALCULATIONS sheet for which ${examLabel}?\n` +
+    options.map((o,i)=>`${i}: ${o}`).join('\n') +
+    '\n\nEnter number:', '0'
+  );
+  if(choice === null) return;
+  const idx = parseInt(choice);
+  if(isNaN(idx) || idx < 0 || idx >= options.length){ alert('Invalid choice.'); return; }
+  const selectedExam = options[idx];
+  const data = selectedExam === 'ALL'
+    ? G.all
+    : G.all.filter(s => String(s.prelim) === selectedExam);
+  if(!data.length){ alert('No data for selected exam.'); return; }
 
-  const TOTAL_MAX=students[0]?.TOTAL_MAX||subjs.reduce((a,s)=>a+s.totalMax,0);
-  const wb=XLSX.utils.book_new();
+  // ── Build column layout ────────────────────────────────
+  // System cols: PRELIM, SECTION, ROLL NO., NAME, GENDER
+  // Raw subject component cols (e.g. MATH 1, MATH 2, ENGLISH...)
+  // Combined subject cols for split subjects (MATH, SCIENCE, SST...)
+  // Computed cols: OVERALL, PERCENTAGE, PASS/FAIL, SUBJECT FAILING, No_fail, ABSENT_COUNT, CLASS_RANK, GRADE_RANK
 
-  // ── Sheet 1: रिझल्ट (Student data) ──────────────────────
-  // Build headers matching the govt format structure
-  const titleRow = [`${examLabel} ${targetPrelim} Result Sheet`];
+  const splitSubjs  = subjs.filter(s => s.cols.length > 1);  // e.g. Math (Math1+Math2)
+  const singleSubjs = subjs.filter(s => s.cols.length === 1); // e.g. English
 
-  // Map subjects to govt columns: split subjects get component columns + total; single subjects get one column
-  // Identify which subjects are split (multiple cols) vs single
-  const govSubjCols = []; // [{label, subjId, component: 'c1'|'c2'|'total'|'single', compIdx}]
-
+  // All raw component columns in order: single-col subjects first, then split components
+  // Match reference: raw cols = individual marks columns in original order
+  const allRawCols = []; // {col, subjId, subjLabel}
+  const seenCols = new Set();
+  // Preserve original column order by mapping through schema subjects
   subjs.forEach(s => {
-    if(s.cols.length > 1) {
-      s.cols.forEach((c,i) => govSubjCols.push({label:`${s.label}-${i+1} (out of ${s.maxPerCol})`, subjId:s.id, type:'component', compIdx:i}));
-      govSubjCols.push({label:`${s.label} Total (out of ${s.totalMax})`, subjId:s.id, type:'total'});
-    } else {
-      govSubjCols.push({label:`${s.label} (out of ${s.totalMax})`, subjId:s.id, type:'single'});
-    }
+    s.cols.forEach(c => {
+      if(!seenCols.has(c)){ allRawCols.push({col:c, subjId:s.id, subjLabel:s.label}); seenCols.add(c); }
+    });
   });
 
-  const headerRow = ['Sr No', 'Name Of Students', 'Boy/Girl',
-    ...govSubjCols.map(c=>c.label),
-    'Total Marks', 'Pass / Fail', '%'
+  // Header row
+  const headers = [
+    examLabel.toUpperCase(),
+    'SECTION', 'ROLL NO.', 'NAME', 'GENDER',
+    ...allRawCols.map(r => r.col.toUpperCase()),
+    ...splitSubjs.map(s => s.label.toUpperCase()),
+    'OVERALL', 'PERCENTAGE', 'PASS/FAIL',
+    'SUBJECT FAILING', 'No_fail', 'ABSENT_COUNT',
+    'CLASS_RANK', 'GRADE_RANK',
   ];
 
-  // Data rows
-  const dataRows = students.map((stu,idx) => {
-    const r = idx+3; // Excel row (1=title, 2=header, 3+=data)
-    const subjVals = govSubjCols.map(gc => {
-      const sr = stu.subjectResults?.[gc.subjId];
-      if(!sr) return null;
-      if(gc.type==='single') return sr.score??null;
-      if(gc.type==='component') return sr.rawVals?.[gc.compIdx]??null;
-      if(gc.type==='total') return null; // will use formula
-      return null;
-    });
-    return [idx+1, stu.name, stu.gender==='M'?'Boy':stu.gender==='F'?'Girl':'—', ...subjVals, null, null, null];
+  // ── Build data rows ────────────────────────────────────
+  // Sort: by prelim → section → overall desc (for rank calculation)
+  const sorted = [...data].sort((a,b) => {
+    const pa = String(a.prelim), pb = String(b.prelim);
+    if(pa !== pb) return pa < pb ? -1 : 1;
+    if(a.section !== b.section) return a.section < b.section ? -1 : 1;
+    return b.overall - a.overall;
   });
 
-  const aoa = [titleRow, headerRow, ...dataRows];
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  // Pre-compute ranks: CLASS_RANK = rank within same prelim+section by overall desc
+  //                    GRADE_RANK = rank within same prelim across all sections
+  const classRankMap  = new Map(); // key = `${prelim}|${section}|${name}` → rank
+  const gradeRankMap  = new Map();
 
-  // Add formulas for total cols, total marks, pass/fail, %
-  const colOffset = 4; // A=Sr, B=Name, C=Boy/Girl, D=first subj col (1-indexed = 4)
-  const nRows = students.length;
-
-  // Figure out which AoA columns are "total" cols
-  let colIdx = colOffset; // 1-based Excel col index for first subj col
-  const totalColIndices = {}; // subjId → excel col letter
-  const singleColIndices = {}; // subjId → excel col letter
-  const compColRanges = {}; // subjId → [start_letter, end_letter]
-
-  govSubjCols.forEach(gc => {
-    const letter = XLSX.utils.encode_col(colIdx-1); // 0-indexed for encode_col
-    if(gc.type==='total') {
-      totalColIndices[gc.subjId] = letter;
-    } else if(gc.type==='single') {
-      singleColIndices[gc.subjId] = letter;
-    } else if(gc.type==='component') {
-      if(!compColRanges[gc.subjId]) compColRanges[gc.subjId]={start:letter};
-      compColRanges[gc.subjId].end = letter;
-    }
-    colIdx++;
+  // Group by prelim+section for class rank
+  const byPrelimSec = {};
+  const byPrelim    = {};
+  data.forEach(s => {
+    const pk  = String(s.prelim);
+    const psk = `${pk}|${s.section}`;
+    if(!byPrelimSec[psk]) byPrelimSec[psk] = [];
+    if(!byPrelim[pk])     byPrelim[pk] = [];
+    byPrelimSec[psk].push(s);
+    byPrelim[pk].push(s);
+  });
+  Object.values(byPrelimSec).forEach(group => {
+    const sorted = [...group].sort((a,b)=>b.overall-a.overall);
+    sorted.forEach((s,i) => classRankMap.set(`${s.prelim}|${s.section}|${s.rollNo}`, i+1));
+  });
+  Object.values(byPrelim).forEach(group => {
+    const sorted = [...group].sort((a,b)=>b.overall-a.overall);
+    sorted.forEach((s,i) => gradeRankMap.set(`${s.prelim}|${s.rollNo}`, i+1));
   });
 
-  const totalMarksCol = XLSX.utils.encode_col(colIdx-1); colIdx++;
-  const passfailCol   = XLSX.utils.encode_col(colIdx-1); colIdx++;
-  const pctCol        = XLSX.utils.encode_col(colIdx-1);
-
-  // Write formulas for each student row
-  for(let i=0;i<nRows;i++){
-    const r=i+3; // Excel row
-
-    // Totals for split subjects
-    Object.entries(compColRanges).forEach(([sid,range])=>{
-      const tcol=totalColIndices[sid];
-      if(tcol) ws[`${tcol}${r}`]={t:'n',f:`SUM(${range.start}${r}:${range.end}${r})`};
+  const rows = data.map(s => {
+    // Raw component scores
+    const rawVals = allRawCols.map(rc => {
+      const sr = s.subjectResults?.[rc.subjId];
+      if(!sr) return '';
+      // For split subjects, individual component values are in sr.rawVals
+      const subjObj = subjs.find(sub => sub.id === rc.subjId);
+      if(!subjObj) return '';
+      const colIdx = subjObj.cols.indexOf(rc.col);
+      if(colIdx === -1) return '';
+      const v = sr.rawVals?.[colIdx];
+      return v === null || v === undefined ? 'AB' : v;
     });
 
-    // Total marks = sum of all subject total/single cols
-    const sumParts=subjs.map(s=>{
-      if(totalColIndices[s.id]) return `${totalColIndices[s.id]}${r}`;
-      if(singleColIndices[s.id]) return `${singleColIndices[s.id]}${r}`;
-      return null;
-    }).filter(Boolean);
-    if(sumParts.length) ws[`${totalMarksCol}${r}`]={t:'n',f:sumParts.join('+')};
-
-    // Pass/Fail
-    const passConds=subjs.map(s=>{
-      const t=s.passThresh;
-      if(totalColIndices[s.id]) return `${totalColIndices[s.id]}${r}>=${t}`;
-      if(singleColIndices[s.id]) return `${singleColIndices[s.id]}${r}>=${t}`;
-      return null;
-    }).filter(Boolean);
-    if(passConds.length) ws[`${passfailCol}${r}`]={t:'s',f:`IF(AND(${passConds.join(',')}),"Pass","Fail")`};
+    // Combined split subject totals
+    const splitTotals = splitSubjs.map(s2 => {
+      const sr = s.subjectResults?.[s2.id];
+      return sr && sr.score !== null ? sr.score : '';
+    });
 
     // Percentage
-    ws[`${pctCol}${r}`]={t:'n',f:`ROUND(${totalMarksCol}${r}/${TOTAL_MAX}*100,1)`};
+    const pct = s.TOTAL_MAX > 0 ? (s.overall / s.TOTAL_MAX) : 0;
+
+    // Subject failing list
+    const failingLabels = subjs
+      .filter(s2 => s.subjectResults?.[s2.id]?.pass === false)
+      .map(s2 => s2.label)
+      .join(', ');
+
+    // No_fail count
+    const noFail = subjs.filter(s2 => s.subjectResults?.[s2.id]?.pass === false).length;
+
+    // Absent count (raw component level)
+    const absentCount = allRawCols.filter(rc => {
+      const subjObj = subjs.find(sub => sub.id === rc.subjId);
+      if(!subjObj) return false;
+      const colIdx = subjObj.cols.indexOf(rc.col);
+      const sr = s.subjectResults?.[rc.subjId];
+      return sr?.rawVals?.[colIdx] === null;
+    }).length;
+
+    const classRank = classRankMap.get(`${s.prelim}|${s.section}|${s.rollNo}`) || '';
+    const gradeRank = gradeRankMap.get(`${s.prelim}|${s.rollNo}`) || '';
+
+    return [
+      s.prelim,
+      s.section,
+      s.rollNo,
+      s.name,
+      s.gender === '—' ? '' : s.gender,
+      ...rawVals,
+      ...splitTotals,
+      s.overall,
+      +(pct * 100).toFixed(2),
+      s.passOverall,
+      failingLabels,
+      noFail,
+      absentCount,
+      classRank,
+      gradeRank,
+    ];
+  });
+
+  // ── Build workbook with SheetJS ────────────────────────
+  const wb = XLSX.utils.book_new();
+  const wsData = [headers, ...rows];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // ── Styling via SheetJS cell properties ───────────────
+  // Column widths
+  const colWidths = [
+    {wch:10}, {wch:10}, {wch:10}, {wch:28}, {wch:8}, // system cols
+    ...allRawCols.map(()=>({wch:12})),                 // raw cols
+    ...splitSubjs.map(()=>({wch:12})),                 // combined
+    {wch:10}, {wch:12}, {wch:12},                      // overall, pct, pass/fail
+    {wch:30}, {wch:10}, {wch:14},                      // failing, no_fail, absent
+    {wch:12}, {wch:12},                                // ranks
+  ];
+  ws['!cols'] = colWidths;
+
+  // Style header row
+  const headerStyle = {
+    font: { bold: true, color: { rgb: 'FFFFFF' }, name: 'Arial', sz: 10 },
+    fill: { fgColor: { rgb: '3B6FCE' }, patternType: 'solid' },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    border: { bottom: { style: 'thin', color: { rgb: 'FFFFFF' } } },
+  };
+  const altFill  = { fgColor: { rgb: 'EEF2FA' }, patternType: 'solid' };
+  const baseFill = { fgColor: { rgb: 'FFFFFF' }, patternType: 'solid' };
+  const passStyle = { font: { bold: true, color: { rgb: '1A7A50' }, name: 'Arial', sz: 10 }, alignment: { horizontal: 'center' } };
+  const failStyle = { font: { bold: true, color: { rgb: 'C0392B' }, name: 'Arial', sz: 10 }, alignment: { horizontal: 'center' } };
+  const numStyle  = { font: { name: 'Arial', sz: 10 }, alignment: { horizontal: 'center' } };
+  const pctStyle  = { font: { name: 'Arial', sz: 10 }, numFmt: '0.00"%"', alignment: { horizontal: 'center' } };
+  const baseStyle = { font: { name: 'Arial', sz: 10 } };
+
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for(let C = range.s.c; C <= range.e.c; C++){
+    const hCell = XLSX.utils.encode_cell({r:0, c:C});
+    if(!ws[hCell]) ws[hCell] = {v: headers[C], t:'s'};
+    ws[hCell].s = headerStyle;
   }
 
-  // Summary stats row (first data row gets summary formulas, rest are blank — matching govt format)
-  const R3=3; // first data row
-  const lastDataRow=2+nRows;
+  // Style data rows
+  const pctColIdx = headers.indexOf('PERCENTAGE');
+  const passfailColIdx = headers.indexOf('PASS/FAIL');
+  for(let R = 1; R <= rows.length; R++){
+    const isAlt = R % 2 === 0;
+    const fill  = isAlt ? altFill : baseFill;
+    for(let C = range.s.c; C <= range.e.c; C++){
+      const addr = XLSX.utils.encode_cell({r:R, c:C});
+      if(!ws[addr]) continue;
+      const isNum = typeof ws[addr].v === 'number';
+      const isPct = C === pctColIdx;
+      const isPF  = C === passfailColIdx;
+      if(isPF){
+        ws[addr].s = {...(ws[addr].v === 'PASS' ? passStyle : failStyle), fill};
+      } else if(isPct){
+        ws[addr].s = {...pctStyle, fill};
+        // Format as percentage display
+        ws[addr].v = ws[addr].v; // already *100
+        ws[addr].t = 'n';
+      } else if(isNum){
+        ws[addr].s = {...numStyle, fill};
+      } else {
+        ws[addr].s = {...baseStyle, fill};
+      }
+    }
+  }
 
-  // Right-side summary block (stats like govt sheet)
-  const statsStartCol=colIdx+2;
-  const SC=i=>XLSX.utils.encode_col(statsStartCol+i-1);
+  // Freeze top row
+  ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
 
-  // Boys/Girls counts
-  ws[`${SC(1)}2`]={t:'s',v:'No of Boys'};
-  ws[`${SC(2)}2`]={t:'s',v:'No of Girls'};
-  ws[`${SC(3)}2`]={t:'s',v:'Passed Boys'};
-  ws[`${SC(4)}2`]={t:'s',v:'Passed Girls'};
-  ws[`${SC(5)}2`]={t:'s',v:'Total Students'};
-  ws[`${SC(6)}2`]={t:'s',v:'Total Passed'};
-  ws[`${SC(7)}2`]={t:'s',v:'Pass%'};
+  XLSX.utils.book_append_sheet(wb, ws, 'CALCULATIONS');
 
-  const CR=`C${R3}:C${lastDataRow}`, QR=`${passfailCol}${R3}:${passfailCol}${lastDataRow}`;
-  ws[`${SC(1)}${R3}`]={t:'n',f:`COUNTIF(${CR},"Boy")`};
-  ws[`${SC(2)}${R3}`]={t:'n',f:`COUNTIF(${CR},"Girl")`};
-  ws[`${SC(3)}${R3}`]={t:'n',f:`COUNTIFS(${QR},"pass",${CR},"Boy")`};
-  ws[`${SC(4)}${R3}`]={t:'n',f:`COUNTIFS(${QR},"pass",${CR},"Girl")`};
-  ws[`${SC(5)}${R3}`]={t:'n',f:`${SC(1)}${R3}+${SC(2)}${R3}`};
-  ws[`${SC(6)}${R3}`]={t:'n',f:`${SC(3)}${R3}+${SC(4)}${R3}`};
-  ws[`${SC(7)}${R3}`]={t:'n',f:`ROUND(${SC(6)}${R3}/${SC(5)}${R3}*100,1)`};
-
-  // Score distribution
-  const PR=`${pctCol}${R3}:${pctCol}${lastDataRow}`;
-  const distLabels=['100','90 to 99','80 to 89','70 to 79','60 to 69','35 to 59','Below 35'];
-  const distFormulas=[
-    `COUNTIF(${PR},100)`,
-    `COUNTIFS(${PR},">=90",${PR},"<=99")`,
-    `COUNTIFS(${PR},">=80",${PR},"<=89")`,
-    `COUNTIFS(${PR},">=70",${PR},"<=79")`,
-    `COUNTIFS(${PR},">=60",${PR},"<=69")`,
-    `COUNTIFS(${PR},">=35",${PR},"<=59")`,
-    `COUNTIF(${PR},"<35")`
-  ];
-  distLabels.forEach((l,i)=>{
-    ws[`${SC(1)}${R3+2+i}`]={t:'s',v:l};
-    ws[`${SC(2)}${R3+2+i}`]={t:'n',f:distFormulas[i]};
-  });
-
-  // Subject pass% stats
-  let statsRow=R3+12;
-  ws[`${SC(1)}${statsRow}`]={t:'s',v:'Subject Pass% Summary'};
-  statsRow++;
-  subjs.forEach(s=>{
-    const col=totalColIndices[s.id]||singleColIndices[s.id];
-    if(!col) return;
-    ws[`${SC(1)}${statsRow}`]={t:'s',v:`${s.label} Pass%`};
-    ws[`${SC(2)}${statsRow}`]={t:'n',f:`ROUND(COUNTIF(${col}${R3}:${col}${lastDataRow},">=${s.passThresh}")/${SC(5)}${R3}*100,1)`};
-    ws[`${SC(1)}${statsRow+1}`]={t:'s',v:`${s.label} Average`};
-    ws[`${SC(2)}${statsRow+1}`]={t:'n',f:`ROUND(AVERAGE(${col}${R3}:${col}${lastDataRow}),1)`};
-    statsRow+=2;
-  });
-
-  // Set column widths
-  ws['!cols']=[{wch:6},{wch:24},{wch:8},...govSubjCols.map(()=>({wch:14})),{wch:12},{wch:12},{wch:8}];
-  ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:lastDataRow+20,c:statsStartCol+8}});
-  XLSX.utils.book_append_sheet(wb, ws, 'रिझल्ट');
-
-  // ── Sheet 2: लिंक माहिती रेडी ─────────────────────────────
-  const link_ws = XLSX.utils.aoa_to_sheet([
-    ['लिंक माहिती', null],
-    [`इ 10 चे एकूण मुले`, {f:`रिझल्ट!${SC(1)}${R3}`}],
-    [`इ 10 चे एकूण मुली`, {f:`रिझल्ट!${SC(2)}${R3}`}],
-    [`इ 10 चे एकूण विद्यार्थी`, {f:`रिझल्ट!${SC(5)}${R3}`}],
-    [`परीक्षेला बसलेले मुले`, {f:`'लिंक माहिती रेडी'!$B$2`}],
-    [`परीक्षेला बसलेले मुली`, {f:`'लिंक माहिती रेडी'!$B$3`}],
-    [`परीक्षेला बसलेले एकूण विद्यार्थी`, {f:`'लिंक माहिती रेडी'!$B$4`}],
-    [`एकूण पास मुलांची संख्या`, {f:`रिझल्ट!${SC(3)}${R3}`}],
-    [`एकूण पास मुलींची संख्या`, {f:`रिझल्ट!${SC(4)}${R3}`}],
-    [`एकूण पास विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(6)}${R3}`}],
-    [`एकूण नापास मुलांची संख्या`, {f:`'लिंक माहिती रेडी'!$B$5-'लिंक माहिती रेडी'!$B$8`}],
-    [`एकूण नापास मुलींची संख्या`, {f:`'लिंक माहिती रेडी'!$B$6-'लिंक माहिती रेडी'!$B$9`}],
-    [`एकूण नापास विद्यार्थी संख्या`, {f:`'लिंक माहिती रेडी'!$B$7-'लिंक माहिती रेडी'!$B$10`}],
-    [`शाळेचा शेकडा निकाल`, {f:`रिझल्ट!${SC(7)}${R3}`}],
-    ...subjs.map(s=>[`${s.label} Pass%`, {f:`रिझल्ट!${SC(2)}${R3+2+subjs.indexOf(s)*2}`}]),
-    [`100% प्राप्त विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(2)}${R3+2}`}],
-    [`90 ते 99 % प्राप्त विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(2)}${R3+3}`}],
-    [`80 ते 89% प्राप्त विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(2)}${R3+4}`}],
-    [`70 ते 79% प्राप्त विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(2)}${R3+5}`}],
-    [`60 ते 69% प्राप्त विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(2)}${R3+6}`}],
-    [`59 ते 35% प्राप्त विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(2)}${R3+7}`}],
-    [`35% पेक्षा कमी प्राप्त विद्यार्थी संख्या`, {f:`रिझल्ट!${SC(2)}${R3+8}`}],
-  ]);
-  link_ws['!cols']=[{wch:40},{wch:16}];
-  XLSX.utils.book_append_sheet(wb, link_ws, 'लिंक माहिती रेडी');
-
-  // ── Sheet 3: Raw Data (for teacher's own analysis) ─────
-  const rawHdr=['Sr','Name','Gender','Section','Overall','Pass/Fail','%',...subjs.map(s=>s.label)];
-  const rawData=students.map((stu,i)=>[
-    i+1, stu.name,
-    stu.gender==='M'?'Boy':stu.gender==='F'?'Girl':'—',
-    stu.section, stu.overall, stu.passOverall, (stu.pct*100).toFixed(1),
-    ...subjs.map(s=>stu.subjectResults?.[s.id]?.score??'AB')
-  ]);
-  const raw_ws=XLSX.utils.aoa_to_sheet([rawHdr,...rawData]);
-  raw_ws['!cols']=[{wch:4},{wch:24},{wch:8},{wch:10},{wch:8},{wch:10},{wch:6},...subjs.map(()=>({wch:12}))];
-  XLSX.utils.book_append_sheet(wb, raw_ws, 'Raw Data');
-
-  const fname=`PrelimsIQ_${examLabel}${targetPrelim}_Export.xlsx`;
-  XLSX.writeFile(wb, fname);
+  // ── Filename ───────────────────────────────────────────
+  const label = selectedExam === 'ALL' ? 'All' : `${examLabel}_${selectedExam}`;
+  XLSX.writeFile(wb, `Examplified_${label}_Calculations.xlsx`);
 }
 </script>
 </body>
