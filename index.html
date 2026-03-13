@@ -950,155 +950,104 @@ function tabOverview(data){
 
 // ── Student Profile (double-click popup) ────────────────────────
 function openStudentProfile(name, section) {
-  const container = document.getElementById('stu-growth-profile');
-  if(!container) return;
+  const subjs     = getSubjs();
+  const prelims   = getPrelimsSorted();
+  const isMixed   = schemaIsMixed();
+  const examLabel = G.schema?.examLabel || 'Prelim';
 
-  const rKey = name + '|' + section;
-  // If same student clicked again → toggle close
-  if(container.dataset.open === rKey && container.style.display !== 'none') {
-    container.style.display = 'none';
-    container.dataset.open = '';
-    return;
-  }
-  container.dataset.open = rKey;
-  container.style.display = 'block';
-
-  const subjs    = getSubjs();
-  const prelims  = getPrelimsSorted();
-  const isMixed  = schemaIsMixed();
-  const examLabel= G.schema?.examLabel || 'Prelim';
-
-  // All entries for this student across all exams (unfiltered - show full history)
   const entries = G.all
     .filter(s => s.name === name && s.section === section)
     .sort((a,b) => prelimSortKey(a.prelim) - prelimSortKey(b.prelim));
 
-  if(!entries.length) { container.innerHTML = '<p style="color:var(--muted);padding:12px">No data found.</p>'; return; }
+  if(!entries.length) return;
 
-  const student = entries[entries.length - 1]; // latest entry for meta
+  const PALETTE = ['#3B6FCE','#1A9E6B','#D63F3F','#C47D0E','#7C5CBF','#3EB4AE','#E67E22','#95A5A6'];
+  const BUCKET_COLOR = {'HOR':'#3B6FCE','UPPER MOR':'#1A9E6B','LOWER MOR':'#C47D0E','LOR':'#D63F3F','ABS':'#95A5A6'};
+  const latest  = entries[entries.length - 1];
+  const passCol = latest.passOverall === 'PASS' ? '#1A9E6B' : '#D63F3F';
 
-  // Bucket history row
-  const BUCKET_COLOR = {
-    'HOR':       'var(--accent)',
-    'UPPER MOR': 'var(--green)',
-    'LOWER MOR': 'var(--amber)',
-    'LOR':       'var(--red)',
-    'ABS':       'var(--muted)',
-  };
-  const bucketRow = prelims.map(p => {
-    const e = entries.find(s => String(s.prelim) === String(p));
-    if(!e) return `<div style="flex:1;text-align:center"><div style="font-size:.7rem;color:var(--muted)">${p}</div><div style="font-size:.75rem;color:var(--muted)">—</div></div>`;
-    const col = BUCKET_COLOR[e.bucket] || 'var(--muted)';
+  // Remove existing overlay if any
+  document.getElementById('stu-modal')?.remove();
+
+  // Build overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'stu-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,12,30,.55);backdrop-filter:blur(3px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.addEventListener('click', e => { if(e.target === overlay) overlay.remove(); });
+
+  const bucketHTML = prelims.map(p => {
+    const e = entries.find(en => String(en.prelim) === String(p));
+    if(!e) return `<div style="flex:1;text-align:center"><div style="font-size:11px;color:#888;margin-bottom:4px">${p}</div><div style="color:#aaa">—</div></div>`;
+    const col = BUCKET_COLOR[e.bucket] || '#95A5A6';
     return `<div style="flex:1;text-align:center">
-      <div style="font-size:.7rem;color:var(--muted);margin-bottom:3px">${p}</div>
-      <div style="display:inline-block;padding:2px 8px;border-radius:20px;background:${col}22;color:${col};font-size:.72rem;font-weight:700;border:1px solid ${col}44">${e.bucket||'—'}</div>
-      <div style="font-size:.7rem;color:var(--muted);margin-top:2px">${e.pct?fmtPct(e.pct):''}</div>
+      <div style="font-size:11px;color:#8892b0;margin-bottom:5px">${p}</div>
+      <div style="display:inline-block;padding:3px 10px;border-radius:20px;background:${col}22;color:${col};font-size:11px;font-weight:700;border:1px solid ${col}55">${e.bucket||'—'}</div>
+      <div style="font-size:11px;color:#8892b0;margin-top:4px">${e.pct?(e.pct*100).toFixed(1)+'%':''}</div>
     </div>`;
   }).join('');
 
-  container.innerHTML = `
-    <div class="panel" style="border:2px solid var(--accent);border-radius:14px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-        <div>
-          <div style="font-size:1rem;font-weight:700;color:var(--text)">${name}
-            <span style="font-size:.8rem;font-weight:400;color:var(--muted);margin-left:6px">Section ${section} · ${entries.length} ${examLabel}${entries.length>1?'s':''}</span>
-          </div>
-          <div style="font-size:.79rem;color:var(--muted);margin-top:2px">
-            Latest: ${fmtPct(student.pct)} overall · ${pfBadge(student.passOverall)}
-          </div>
-        </div>
-        <button onclick="document.getElementById('stu-profile').style.display='none';document.getElementById('stu-profile').dataset.open=''"
-          style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--muted);padding:4px 8px">✕</button>
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.18);width:100%;max-width:760px;max-height:90vh;overflow-y:auto;padding:28px;position:relative">
+      <button id="stu-modal-close" style="position:absolute;top:16px;right:18px;background:none;border:none;font-size:1.4rem;cursor:pointer;color:#8892b0;line-height:1">✕</button>
+      <div style="font-size:1.15rem;font-weight:700;color:#1a1f36;margin-bottom:4px">${name}</div>
+      <div style="font-size:.82rem;color:#6b7694;margin-bottom:20px">
+        Section ${section} &nbsp;·&nbsp; ${entries.length} ${examLabel}${entries.length>1?'s':''}
+        &nbsp;·&nbsp; Latest: ${(latest.pct*100).toFixed(1)}%
+        &nbsp;<span style="display:inline-block;padding:1px 9px;border-radius:20px;background:${passCol}22;color:${passCol};font-size:.75rem;font-weight:700;border:1px solid ${passCol}44">${latest.passOverall}</span>
       </div>
-
-      <div style="height:240px;margin-bottom:16px"><canvas id="ch-stu-profile"></canvas></div>
-
-      <div style="font-size:.75rem;font-weight:600;color:var(--muted);margin-bottom:6px;letter-spacing:.04em">BUCKET HISTORY</div>
-      <div style="display:flex;gap:4px;padding:10px;background:var(--surface2);border-radius:9px">
-        ${bucketRow}
-      </div>
+      <div style="height:260px;margin-bottom:20px"><canvas id="ch-stu-modal"></canvas></div>
+      <div style="font-size:.7rem;font-weight:700;color:#8892b0;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">Bucket History</div>
+      <div style="display:flex;gap:6px;background:#f4f6fb;padding:12px;border-radius:10px">${bucketHTML}</div>
     </div>`;
 
-  // Render after DOM settles
-  setTimeout(() => renderStudentProfileChart(entries, subjs, prelims, isMixed, examLabel), 0);
-}
+  document.body.appendChild(overlay);
+  document.getElementById('stu-modal-close').onclick = () => overlay.remove();
 
-function renderStudentProfileChart(entries, subjs, prelims, isMixed, examLabel) {
-  const c = document.getElementById('ch-stu-profile');
-  if(!c) return;
-  const existing = Chart.getChart(c); if(existing) existing.destroy();
+  // Build chart after DOM paint
+  requestAnimationFrame(() => {
+    const c = document.getElementById('ch-stu-modal');
+    if(!c) return;
 
-  const PALETTE = [
-    '#3B6FCE','#1A9E6B','#D63F3F','#C47D0E','#7C5CBF',
-    '#3EB4AE','#E67E22','#95A5A6',
-  ];
+    const datasets = subjs.map((s, i) => ({
+      label: s.label,
+      data: prelims.map(p => {
+        const e = entries.find(en => String(en.prelim) === String(p));
+        if(!e) return null;
+        const sr = e.subjectResults?.[s.id];
+        if(!sr || sr.score === null) return null;
+        return isMixed ? +(sr.pctSubj * 100).toFixed(1) : sr.score;
+      }),
+      borderColor: PALETTE[i % PALETTE.length],
+      backgroundColor: PALETTE[i % PALETTE.length] + '22',
+      borderWidth: 2.5, pointRadius: 5, tension: 0.3, spanGaps: true, fill: false,
+    }));
+    datasets.push({
+      label: 'Overall %',
+      data: prelims.map(p => {
+        const e = entries.find(en => String(en.prelim) === String(p));
+        return e ? +(e.pct * 100).toFixed(1) : null;
+      }),
+      borderColor: '#1a1f36', backgroundColor: 'transparent',
+      borderWidth: 2, borderDash: [6,3], pointRadius: 4, pointStyle: 'rectRot',
+      tension: 0.3, spanGaps: true, fill: false,
+    });
 
-  const getVal = (e, s) => {
-    const sr = e.subjectResults?.[s.id];
-    if(!sr || sr.score === null) return null;
-    return isMixed ? +(sr.pctSubj * 100).toFixed(1) : sr.score;
-  };
-
-  const datasets = subjs.map((s, i) => ({
-    label: s.label,
-    data: prelims.map(p => {
-      const e = entries.find(en => String(en.prelim) === String(p));
-      return e ? getVal(e, s) : null;
-    }),
-    borderColor: PALETTE[i % PALETTE.length],
-    backgroundColor: PALETTE[i % PALETTE.length] + '22',
-    borderWidth: 2.5,
-    pointRadius: 5,
-    pointHoverRadius: 7,
-    tension: 0.3,
-    spanGaps: true,
-    fill: false,
-  }));
-
-  // Also add overall as a dashed line
-  datasets.push({
-    label: 'Overall %',
-    data: prelims.map(p => {
-      const e = entries.find(en => String(en.prelim) === String(p));
-      return e ? +(e.pct * 100).toFixed(1) : null;
-    }),
-    borderColor: '#1a1f36',
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderDash: [6, 3],
-    pointRadius: 4,
-    pointStyle: 'rectRot',
-    tension: 0.3,
-    spanGaps: true,
-    fill: false,
-  });
-
-  new Chart(c, {
-    type: 'line',
-    data: { labels: prelims.map(String), datasets },
-    options: {
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: true, position: 'bottom',
-          labels: { color: '#6b7694', font: { family: 'Plus Jakarta Sans', size: 11 }, boxWidth: 12, padding: 12 }
-        },
-        tooltip: {
-          callbacks: {
-            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y !== null ? ctx.parsed.y + (isMixed ? '%' : '') : 'Absent'}`
-          }
+    new Chart(c, {
+      type: 'line',
+      data: { labels: prelims.map(String), datasets },
+      options: {
+        maintainAspectRatio: false,
+        plugins: { legend: { position:'bottom', labels:{ font:{size:11}, boxWidth:12, padding:12, color:'#6b7694' } } },
+        scales: {
+          x: { ticks:{color:'#8892b0'}, grid:{color:'#eef0f7'}, title:{display:true,text:examLabel,color:'#8892b0'} },
+          y: { ticks:{color:'#8892b0', callback:v=>v+(isMixed?'%':'')}, grid:{color:'#eef0f7'},
+               title:{display:true, text:isMixed?'Score (%)':'Score', color:'#8892b0'} }
         }
-      },
-      scales: {
-        x: { ticks: { color: '#8892b0' }, grid: { color: '#e8ecf6' },
-             title: { display: true, text: examLabel, color: '#8892b0', font: { size: 11 } } },
-        y: { ticks: { color: '#8892b0', callback: v => v + (isMixed ? '%' : '') },
-             grid: { color: '#e8ecf6' },
-             title: { display: true, text: isMixed ? 'Score (%)' : 'Score', color: '#8892b0', font: { size: 11 } } }
       }
-    }
+    });
   });
 }
+
 
 function tabStudents(data){
   const subjs=getSubjs();
