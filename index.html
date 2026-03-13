@@ -947,9 +947,161 @@ function tabOverview(data){
 // ═══════════════════════════════════════════════════════════
 // TAB: STUDENTS
 // ═══════════════════════════════════════════════════════════
+
+// ── Student Profile (double-click popup) ────────────────────────
+function openStudentProfile(name, section) {
+  const container = document.getElementById('stu-growth-profile');
+  if(!container) return;
+
+  const rKey = name + '|' + section;
+  // If same student clicked again → toggle close
+  if(container.dataset.open === rKey && container.style.display !== 'none') {
+    container.style.display = 'none';
+    container.dataset.open = '';
+    return;
+  }
+  container.dataset.open = rKey;
+  container.style.display = 'block';
+
+  const subjs    = getSubjs();
+  const prelims  = getPrelimsSorted();
+  const isMixed  = schemaIsMixed();
+  const examLabel= G.schema?.examLabel || 'Prelim';
+
+  // All entries for this student across all exams (unfiltered - show full history)
+  const entries = G.all
+    .filter(s => s.name === name && s.section === section)
+    .sort((a,b) => prelimSortKey(a.prelim) - prelimSortKey(b.prelim));
+
+  if(!entries.length) { container.innerHTML = '<p style="color:var(--muted);padding:12px">No data found.</p>'; return; }
+
+  const student = entries[entries.length - 1]; // latest entry for meta
+
+  // Bucket history row
+  const BUCKET_COLOR = {
+    'HOR':       'var(--accent)',
+    'UPPER MOR': 'var(--green)',
+    'LOWER MOR': 'var(--amber)',
+    'LOR':       'var(--red)',
+    'ABS':       'var(--muted)',
+  };
+  const bucketRow = prelims.map(p => {
+    const e = entries.find(s => String(s.prelim) === String(p));
+    if(!e) return `<div style="flex:1;text-align:center"><div style="font-size:.7rem;color:var(--muted)">${p}</div><div style="font-size:.75rem;color:var(--muted)">—</div></div>`;
+    const col = BUCKET_COLOR[e.bucket] || 'var(--muted)';
+    return `<div style="flex:1;text-align:center">
+      <div style="font-size:.7rem;color:var(--muted);margin-bottom:3px">${p}</div>
+      <div style="display:inline-block;padding:2px 8px;border-radius:20px;background:${col}22;color:${col};font-size:.72rem;font-weight:700;border:1px solid ${col}44">${e.bucket||'—'}</div>
+      <div style="font-size:.7rem;color:var(--muted);margin-top:2px">${e.pct?fmtPct(e.pct):''}</div>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="panel" style="border:2px solid var(--accent);border-radius:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <div style="font-size:1rem;font-weight:700;color:var(--text)">${name}
+            <span style="font-size:.8rem;font-weight:400;color:var(--muted);margin-left:6px">Section ${section} · ${entries.length} ${examLabel}${entries.length>1?'s':''}</span>
+          </div>
+          <div style="font-size:.79rem;color:var(--muted);margin-top:2px">
+            Latest: ${fmtPct(student.pct)} overall · ${pfBadge(student.passOverall)}
+          </div>
+        </div>
+        <button onclick="document.getElementById('stu-profile').style.display='none';document.getElementById('stu-profile').dataset.open=''"
+          style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--muted);padding:4px 8px">✕</button>
+      </div>
+
+      <div style="height:240px;margin-bottom:16px"><canvas id="ch-stu-profile"></canvas></div>
+
+      <div style="font-size:.75rem;font-weight:600;color:var(--muted);margin-bottom:6px;letter-spacing:.04em">BUCKET HISTORY</div>
+      <div style="display:flex;gap:4px;padding:10px;background:var(--surface2);border-radius:9px">
+        ${bucketRow}
+      </div>
+    </div>`;
+
+  // Render after DOM settles
+  setTimeout(() => renderStudentProfileChart(entries, subjs, prelims, isMixed, examLabel), 0);
+}
+
+function renderStudentProfileChart(entries, subjs, prelims, isMixed, examLabel) {
+  const c = document.getElementById('ch-stu-profile');
+  if(!c) return;
+  const existing = Chart.getChart(c); if(existing) existing.destroy();
+
+  const PALETTE = [
+    '#3B6FCE','#1A9E6B','#D63F3F','#C47D0E','#7C5CBF',
+    '#3EB4AE','#E67E22','#95A5A6',
+  ];
+
+  const getVal = (e, s) => {
+    const sr = e.subjectResults?.[s.id];
+    if(!sr || sr.score === null) return null;
+    return isMixed ? +(sr.pctSubj * 100).toFixed(1) : sr.score;
+  };
+
+  const datasets = subjs.map((s, i) => ({
+    label: s.label,
+    data: prelims.map(p => {
+      const e = entries.find(en => String(en.prelim) === String(p));
+      return e ? getVal(e, s) : null;
+    }),
+    borderColor: PALETTE[i % PALETTE.length],
+    backgroundColor: PALETTE[i % PALETTE.length] + '22',
+    borderWidth: 2.5,
+    pointRadius: 5,
+    pointHoverRadius: 7,
+    tension: 0.3,
+    spanGaps: true,
+    fill: false,
+  }));
+
+  // Also add overall as a dashed line
+  datasets.push({
+    label: 'Overall %',
+    data: prelims.map(p => {
+      const e = entries.find(en => String(en.prelim) === String(p));
+      return e ? +(e.pct * 100).toFixed(1) : null;
+    }),
+    borderColor: '#1a1f36',
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderDash: [6, 3],
+    pointRadius: 4,
+    pointStyle: 'rectRot',
+    tension: 0.3,
+    spanGaps: true,
+    fill: false,
+  });
+
+  new Chart(c, {
+    type: 'line',
+    data: { labels: prelims.map(String), datasets },
+    options: {
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true, position: 'bottom',
+          labels: { color: '#6b7694', font: { family: 'Plus Jakarta Sans', size: 11 }, boxWidth: 12, padding: 12 }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y !== null ? ctx.parsed.y + (isMixed ? '%' : '') : 'Absent'}`
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#8892b0' }, grid: { color: '#e8ecf6' },
+             title: { display: true, text: examLabel, color: '#8892b0', font: { size: 11 } } },
+        y: { ticks: { color: '#8892b0', callback: v => v + (isMixed ? '%' : '') },
+             grid: { color: '#e8ecf6' },
+             title: { display: true, text: isMixed ? 'Score (%)' : 'Score', color: '#8892b0', font: { size: 11 } } }
+      }
+    }
+  });
+}
+
 function tabStudents(data){
   const subjs=getSubjs();
-  // Store data for filter function
   window._stuData = data;
   const subjOpts=subjs.map(s=>`<option value="${s.id}">${s.label}</option>`).join('');
   const buckets=['LOR','LOWER MOR','UPPER MOR','HOR','ABS'];
@@ -959,11 +1111,12 @@ function tabStudents(data){
       <input type="text" id="stu-search" placeholder="Search by name…" oninput="filtST()"
         style="padding:6px 12px;border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.82rem;background:var(--surface);color:var(--text);outline:none;width:200px">
       <select id="stu-subj" onchange="filtST()" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.82rem;background:var(--surface);color:var(--text);outline:none">
-        <option value="all">All Subjects</option>${subjOpts}
+        <option value="all">Overall</option>${subjOpts}
       </select>
       <select id="stu-bkt" onchange="filtST()" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.82rem;background:var(--surface);color:var(--text);outline:none">
         <option value="all">All Buckets</option>${bktOpts}
       </select>
+
       <select id="stu-pass" onchange="filtST()" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.82rem;background:var(--surface);color:var(--text);outline:none">
         <option value="all">Pass &amp; Fail</option>
         <option value="PASS">Pass only</option>
@@ -974,7 +1127,9 @@ function tabStudents(data){
     <div class="tw"><table><thead><tr>
       <th>Name</th><th>Sec</th><th>P</th><th>Total</th><th>%</th>
       ${subjs.map(s=>`<th>${s.label}</th>`).join('')}<th>Pass</th><th>Bucket</th>
-    </tr></thead><tbody id="stu-tbody">${buildStudentRows(data, subjs)}</tbody></table></div></div>`;
+    </tr></thead><tbody id="stu-tbody">${buildStudentRows(data, subjs)}</tbody></table></div>
+    </div>`;
+
 }
 
 function buildStudentRows(data, subjs) {
@@ -987,7 +1142,17 @@ function buildStudentRows(data, subjs) {
       const maxDisp=sr.scaledMax||s.totalMax;
       return `<td style="color:${scoreClr(pct)}">${sr.score}<span style="font-size:.7rem;color:var(--muted)">/${maxDisp}</span></td>`;
     }).join('');
-    return `<tr data-name="${r.name.toLowerCase()}" data-bucket="${r.bucket||''}" data-pass="${r.passOverall}" data-failing="${r.failing.join(',')}">
+    // Store per-subject pct (0-100) for dynamic bucket calc in filtST
+    const subjScores={};
+    subjs.forEach(s=>{
+      const sr=r.subjectResults?.[s.id];
+      if(!sr||sr.score===null){ subjScores[s.id]=null; return; }
+      // Always store as 0-100 percentage so cross-exam comparisons work
+      const max = sr.scaledMax || s.totalMax || 1;
+      subjScores[s.id] = +(sr.score/max*100).toFixed(2);
+    });
+    return `<tr data-name="${r.name.toLowerCase()}" data-bucket="${r.bucket||''}" data-pass="${r.passOverall}" data-failing="${r.failing.join(',')}"
+      data-subjscores="${encodeURIComponent(JSON.stringify(subjScores))}">
       <td style="font-weight:600;white-space:nowrap">${r.name}</td>
       <td>${r.section}</td><td>${r.prelim}</td>
       <td style="color:${scoreClr(r.pct)};font-weight:600">${r.overall}<span style="font-size:.7rem;color:var(--muted)">/${r.TOTAL_MAX}</span></td>
@@ -999,33 +1164,69 @@ function buildStudentRows(data, subjs) {
 }
 
 function filtST(){
-  const q=(document.getElementById('stu-search')?.value||'').toLowerCase();
-  const subj=document.getElementById('stu-subj')?.value||'all';
-  const bkt=document.getElementById('stu-bkt')?.value||'all';
-  const pass=document.getElementById('stu-pass')?.value||'all';
+  const q       = (document.getElementById('stu-search')?.value||'').toLowerCase();
+  const bktSubj = document.getElementById('stu-subj')?.value||'all';  // which subject's quartiles to use
+  const bkt     = document.getElementById('stu-bkt')?.value||'all';   // bucket tier
+  const pf      = document.getElementById('stu-pass')?.value||'all';
+  const rows    = [...document.querySelectorAll('#stu-tbody tr')];
+
+  // Pre-compute quartile boundaries for chosen subject across ALL rows (stable)
+  let bounds = null;
+  if(bktSubj !== 'all'){
+    const vals = rows.map(tr=>{
+      try{ const ss=JSON.parse(decodeURIComponent(tr.dataset.subjscores||'{}')); return ss[bktSubj]??null; }
+      catch(e){ return null; }
+    }).filter(v=>v!==null).sort((a,b)=>a-b);
+    const n=vals.length;
+    if(n>=4) bounds={ q1:vals[Math.floor(n*.25)], q2:vals[Math.floor(n*.5)], q3:vals[Math.floor(n*.75)] };
+  }
+
+  const getBucket = (tr) => {
+    if(bktSubj==='all' || !bounds) return tr.dataset.bucket||'';
+    try{
+      const ss=JSON.parse(decodeURIComponent(tr.dataset.subjscores||'{}'));
+      const v=ss[bktSubj];
+      if(v===null||v===undefined) return 'ABS';
+      return v<bounds.q1?'LOR':v<bounds.q2?'LOWER MOR':v<bounds.q3?'UPPER MOR':'HOR';
+    }catch(e){ return ''; }
+  };
+
   let vis=0;
-  document.querySelectorAll('#stu-tbody tr').forEach(tr=>{
-    const nameMatch=!q||tr.dataset.name?.includes(q);
-    const bktMatch=bkt==='all'||tr.dataset.bucket===bkt;
-    const passMatch=pass==='all'||tr.dataset.pass===pass;
-    const subjMatch=subj==='all'||tr.dataset.failing?.split(',').includes(subj);
-    // subj filter: show students failing that subject, OR show all if 'all'
-    const show=nameMatch&&bktMatch&&passMatch&&(subj==='all'||subjMatch);
-    tr.style.display=show?'':'none';
-    if(show) vis++;
+  rows.forEach(tr=>{
+    const name   = tr.dataset.name||'';
+    const pass   = tr.dataset.pass||'';
+    const bucket = getBucket(tr);
+    const ok=(
+      (!q          || name.includes(q))  &&
+      (bkt==='all' || bucket===bkt)      &&
+      (pf==='all'  || pass===pf)
+    );
+    tr.style.display=ok?'':'none';
+    if(ok) vis++;
+    // Update bucket badge live to reflect current subject context
+    const tds=tr.querySelectorAll('td');
+    if(tds.length) tds[tds.length-1].innerHTML=bktBadge(bucket);
   });
+
+  // Update bucket dropdown hint
+  const bktSel=document.getElementById('stu-bkt');
+  if(bktSel){
+    const lbl = bktSubj!=='all' ? getSubjs().find(s=>s.id===bktSubj)?.label : null;
+    bktSel.options[0].text = lbl ? `All ${lbl} Buckets` : 'All Buckets';
+  }
+
   const cnt=document.getElementById('stu-count');
-  if(cnt) cnt.textContent=`${vis} student${vis!==1?'s':''} shown`;
+  const ctx = bktSubj!=='all' ? ` · ${getSubjs().find(s=>s.id===bktSubj)?.label} quartiles` : '';
+  if(cnt) cnt.textContent=`${vis} student${vis!==1?'s':''}${ctx}`;
 }
 
-// ═══════════════════════════════════════════════════════════
-// TAB: SUBJECTS
-// ═══════════════════════════════════════════════════════════
+
 function tabSubjects(data){
   const subjs=getSubjs();
   const prelims=getPrelimsSorted();
   const isMixed=schemaIsMixed();
   const hasTrend=prelims.length>1;
+  const unit=isMixed?'%':'';
 
   const rows=subjs.map(s=>{
     const sr=data.map(r=>r.subjectResults?.[s.id]).filter(Boolean);
@@ -1033,102 +1234,109 @@ function tabSubjects(data){
     const pres=sr.filter(r=>r.score!==null);
     const passCnt=pres.filter(r=>r.pass===true).length;
     const passRate=pres.length?passCnt/pres.length:0;
-    const vals=isMixed
-      ? pres.map(r=>r.pctSubj!==null?+(r.pctSubj*100).toFixed(1):null).filter(v=>v!==null).sort((a,b)=>a-b)
-      : pres.map(r=>r.score).filter(v=>v!==null).sort((a,b)=>a-b);
-    const avg=vals.length?fmtAvg(vals):null;
-    const med=vals.length?vals[Math.floor(vals.length/2)]:null;
+    const vals=(isMixed
+      ? pres.map(r=>r.pctSubj!==null?+(r.pctSubj*100).toFixed(1):null).filter(v=>v!==null)
+      : pres.map(r=>r.score).filter(v=>v!==null)
+    ).sort((a,b)=>a-b);
+    const n=vals.length;
+    const avg  = n ? +fmtAvg(vals).toFixed(1) : null;
+    const q1   = n ? vals[Math.floor(n*0.25)]  : null;
+    const med  = n ? vals[Math.floor(n*0.5)]   : null;
+    const q3   = n ? vals[Math.floor(n*0.75)]  : null;
+    const fmt  = v => v!==null ? v+unit : '—';
     const maxDisp=isMixed?'100%':s.totalMax;
-    const avgDisp=avg!==null?(isMixed?avg.toFixed(1)+'%':avg.toFixed(1)):'—';
-    const medDisp=med!==null?(isMixed?med.toFixed(1)+'%':String(med)):'—';
     return `<tr>
       <td style="font-weight:600">${s.label}</td>
       <td style="font-size:.75rem;color:var(--muted)">${s.cols.join(' + ')}</td>
       <td>${maxDisp}</td>
       <td style="color:${passRate>=.7?'var(--green)':passRate>=.5?'var(--amber)':'var(--red)'};font-weight:600">${fmtPct(passRate)}</td>
-      <td>${avgDisp}</td>
-      <td>${medDisp}</td>
+      <td>${fmt(avg)}</td>
+      <td>${fmt(q1)}</td>
+      <td>${fmt(med)}</td>
+      <td>${fmt(q3)}</td>
       <td style="color:var(--muted)">${absCnt}</td>
       <td style="min-width:110px">${mkPbar(passRate,passRate>=.7?'var(--green)':passRate>=.5?'var(--amber)':'var(--red)')}</td>
     </tr>`;
   }).join('');
 
+  const metricOpts=['avg','median','q1','q3'].map((m,i)=>
+    `<option value="${m}">${['Average','Median','Q1 (25th %)','Q3 (75th %)'][i]}</option>`
+  ).join('');
+
   const chartHtml=hasTrend?`
     <div class="panel" style="margin-bottom:16px">
-      <div class="panel-title">Average Score by Subject Across ${G.schema?.examLabel||'Exam'}s${isMixed?' (normalised %)':''}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="panel-title" style="margin:0" id="subj-chart-title">Average Score Across ${G.schema?.examLabel||'Exam'}s${isMixed?' (%)':''}</div>
+        <select id="subj-metric" onchange="switchSubjMetric(this.value)"
+          style="padding:5px 10px;border:1px solid var(--border);border-radius:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:.81rem;background:var(--surface);color:var(--text);outline:none">
+          ${metricOpts}
+        </select>
+      </div>
       <div style="height:260px"><canvas id="ch-subj-trend"></canvas></div>
     </div>`:'';
 
   return `${chartHtml}<div class="panel"><div class="panel-title">Subject Performance Summary</div>
     <div class="tw"><table><thead><tr>
-      <th>Subject</th><th>Columns</th><th>Max</th><th>Pass%</th><th>Avg</th><th>Median</th><th>Absent</th><th>Pass Bar</th>
+      <th>Subject</th><th>Columns</th><th>Max</th><th>Pass%</th><th>Avg</th><th>Q1</th><th>Median</th><th>Q3</th><th>Absent</th><th>Pass Bar</th>
     </tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 
-function renderSubjectTrendChart(data){
+function renderSubjectTrendChart(data, metric){
+  metric = metric || document.getElementById('subj-metric')?.value || 'avg';
   const c=document.getElementById('ch-subj-trend'); if(!c) return;
   const existing=Chart.getChart(c); if(existing) existing.destroy();
   const subjs=getSubjs();
   const prelims=getPrelimsSorted();
   const isMixed=schemaIsMixed();
   const examLabel=G.schema?.examLabel||'Exam';
+  const METRIC_LABELS={avg:'Average',median:'Median',q1:'Q1 (25th %)',q3:'Q3 (75th %)'};
 
-  // Palette — distinct colours per subject
   const PALETTE=[
     'rgba(59,111,206,.85)','rgba(26,158,107,.85)','rgba(214,63,63,.85)',
     'rgba(197,151,14,.85)','rgba(124,92,191,.85)','rgba(62,180,174,.85)',
     'rgba(230,126,34,.85)','rgba(149,165,166,.85)',
   ];
 
-  const getAvg=(p,s)=>{
+  const getVal=(p,s)=>{
     const rows=data.filter(r=>String(r.prelim)===String(p));
-    const vals=rows.map(r=>{
-      const sr=r.subjectResults?.[s.id];
-      if(!sr||sr.score===null) return null;
-      return isMixed ? sr.pctSubj*100 : sr.score;
-    }).filter(v=>v!==null);
-    return vals.length ? +fmtAvg(vals).toFixed(1) : null;
+    const vals=(isMixed
+      ? rows.map(r=>{ const sr=r.subjectResults?.[s.id]; return sr&&sr.score!==null?+(sr.pctSubj*100).toFixed(1):null; })
+      : rows.map(r=>{ const sr=r.subjectResults?.[s.id]; return sr&&sr.score!==null?sr.score:null; })
+    ).filter(v=>v!==null).sort((a,b)=>a-b);
+    const n=vals.length; if(!n) return null;
+    if(metric==='avg')    return +fmtAvg(vals).toFixed(1);
+    if(metric==='median') return vals[Math.floor(n*0.5)];
+    if(metric==='q1')     return vals[Math.floor(n*0.25)];
+    if(metric==='q3')     return vals[Math.floor(n*0.75)];
+    return null;
   };
 
   const datasets=subjs.map((s,i)=>({
-    label: s.label,
-    data: prelims.map(p=>getAvg(p,s)),
-    borderColor: PALETTE[i%PALETTE.length],
-    backgroundColor: PALETTE[i%PALETTE.length].replace('.85','.12'),
-    borderWidth: 2.5,
-    pointRadius: 4,
-    pointHoverRadius: 6,
-    tension: 0.35,
-    fill: false,
+    label:s.label,
+    data:prelims.map(p=>getVal(p,s)),
+    borderColor:PALETTE[i%PALETTE.length],
+    backgroundColor:PALETTE[i%PALETTE.length].replace('.85','.12'),
+    borderWidth:2.5, pointRadius:4, pointHoverRadius:6, tension:0.35, fill:false,
   }));
 
-  new Chart(c,{
-    type:'line',
-    data:{ labels:prelims.map(p=>String(p)), datasets },
-    options:{
-      maintainAspectRatio:false,
-      plugins:{
-        legend:{
-          display:true,
-          position:'bottom',
-          labels:{color:'#6b7694',font:{family:'Plus Jakarta Sans',size:11},boxWidth:12,padding:14}
-        }
-      },
-      scales:{
-        x:{ticks:{color:'#8892b0',font:{family:'Plus Jakarta Sans',size:11}},grid:{color:'#e8ecf6'},
-           title:{display:true,text:examLabel,color:'#8892b0',font:{size:11}}},
-        y:{ticks:{color:'#8892b0',font:{family:'Plus Jakarta Sans',size:11},
-                  callback:v=>isMixed?v+'%':v},
-           grid:{color:'#e8ecf6'},
-           title:{display:true,text:isMixed?'Average (%)':'Average Score',color:'#8892b0',font:{size:11}}}
-      }
+  const titleEl=document.getElementById('subj-chart-title');
+  if(titleEl) titleEl.textContent=`${METRIC_LABELS[metric]} Score Across ${examLabel}s${isMixed?' (%)':''}`;
+
+  new Chart(c,{type:'line',data:{labels:prelims.map(String),datasets},options:{
+    maintainAspectRatio:false,
+    plugins:{legend:{display:true,position:'bottom',labels:{color:'#6b7694',font:{family:'Plus Jakarta Sans',size:11},boxWidth:12,padding:14}}},
+    scales:{
+      x:{ticks:{color:'#8892b0'},grid:{color:'#e8ecf6'},title:{display:true,text:examLabel,color:'#8892b0',font:{size:11}}},
+      y:{ticks:{color:'#8892b0',callback:v=>v+(isMixed?'%':'')},grid:{color:'#e8ecf6'},
+         title:{display:true,text:isMixed?`${METRIC_LABELS[metric]} (%)`:`${METRIC_LABELS[metric]} Score`,color:'#8892b0',font:{size:11}}}
     }
-  });
+  }});
 }
 
-// ═══════════════════════════════════════════════════════════
-// TAB: AT-RISK (with subject filter)
-// ═══════════════════════════════════════════════════════════
+function switchSubjMetric(metric){
+  renderSubjectTrendChart(getFilt(), metric);
+}
+
 const INTERNAL_MARKS = 18;
 
 function getSubjsFailingWithInternals(student) {
@@ -1304,8 +1512,10 @@ function tabGrowth(data){
         </label>
       </div>
       <div id="gtbl-wrap">${buildGrowthTable(data,'OVERALL',false)}</div>
+      <div style="font-size:.74rem;color:var(--muted);margin-top:8px;text-align:right">💡 Double-click any row to view subject-by-subject growth</div>
     </div>
-  </div>`;
+  </div>
+  <div id="stu-growth-profile" style="margin-top:16px"></div>`;
 }
 
 
@@ -1359,8 +1569,9 @@ function buildGrowthTable(data,subj,predFailOnly){
     ${prelims.slice(1).map((_,i)=>`<th>↑${i+1}</th>`).join('')}
     <th>Avg Growth</th><th>Predicted</th><th>Trend</th>
   </tr></thead><tbody>
-  ${displayRows.map(r=>`<tr>
-    <td style="font-weight:600;white-space:nowrap">${r.name}</td><td>${r.sec}</td>
+  ${displayRows.map(r=>`<tr style="cursor:pointer" title="Double-click for subject breakdown"
+    data-gname="${r.name.replace(/"/g,'&quot;')}" data-gsec="${r.sec}">
+    <td style="font-weight:600;white-space:nowrap">${r.name} <span style="font-size:.65rem;color:var(--accent)">↗</span></td><td>${r.sec}</td>
     ${r.scores.map(s=>s!==null?`<td>${s}${unit}</td>`:`<td style="color:var(--muted)">—</td>`).join('')}
     ${r.growths.map(g=>g!==null?`<td>${growArr(g)}</td>`:`<td style="color:var(--muted)">—</td>`).join('')}
     <td>${r.avgG!==null?growArr(r.avgG):'—'}</td>
@@ -1371,6 +1582,16 @@ function buildGrowthTable(data,subj,predFailOnly){
 }
 
 
+function bindGrowthDblclick(){
+  const wrap=document.getElementById('gtbl-wrap');
+  if(!wrap) return;
+  wrap._dblclickBound=false;
+  wrap.addEventListener('dblclick',e=>{
+    const tr=e.target.closest('tr[data-gname]'); if(!tr) return;
+    openStudentProfile(tr.dataset.gname, tr.dataset.gsec);
+  });
+}
+
 function switchGS(el){
   document.querySelectorAll('.sp-pill').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
@@ -1380,14 +1601,14 @@ function switchGS(el){
   const examLabel=G.schema?.examLabel||'Prelim';
   document.getElementById('growth-chart-title').textContent=`Average Growth Between ${examLabel}s — ${subjLabels[subj]||subj}`;
   const predOnly=document.getElementById('pred-fail-only')?.checked||false;
-  const w=document.getElementById('gtbl-wrap'); if(w) w.innerHTML=buildGrowthTable(getFilt(),subj,predOnly);
+  const w=document.getElementById('gtbl-wrap'); if(w){ w.innerHTML=buildGrowthTable(getFilt(),subj,predOnly); bindGrowthDblclick(); }
   renderGrowthChart(getFilt(),subj);
 }
 
 function togglePredFail(cb){
   const subj=document.querySelector('.sp-pill.active')?.dataset?.subj||'OVERALL';
   const w=document.getElementById('gtbl-wrap');
-  if(w) w.innerHTML=buildGrowthTable(getFilt(),subj,cb.checked);
+  if(w){ w.innerHTML=buildGrowthTable(getFilt(),subj,cb.checked); bindGrowthDblclick(); }
 }
 
 function renderGrowthChart(data,subj){
@@ -1662,7 +1883,10 @@ function afterRender(tab,data){
   }
   if(tab==='subjects') setTimeout(()=>renderSubjectTrendChart(data),0);
   if(tab==='atrisk') setTimeout(()=>arRender('OVERALL'),0);
-  if(tab==='growth') renderGrowthChart(data,'OVERALL');
+  if(tab==='growth'){
+    renderGrowthChart(data,'OVERALL');
+    setTimeout(()=>bindGrowthDblclick(),50);
+  }
   if(tab==='kmeans') setTimeout(()=>runKmeans(getFilt()),0);
 }
 
